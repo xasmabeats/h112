@@ -8,6 +8,9 @@ use std::{
 use tauri::{Emitter, Manager, State};
 use xasma_native::{archive::PreparedRestore, model::*, Service};
 struct Dropped(Mutex<HashMap<String, Vec<PathBuf>>>);
+struct DesktopInstance {
+    _handle: File,
+}
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
     tauri::async_runtime::spawn_blocking(f)
         .await
@@ -255,6 +258,15 @@ fn create_recovery(service: State<'_, Arc<Service>>, metadata_json: String) -> R
 }
 
 fn setup(app: &mut tauri::App) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let data_root = app.path().app_local_data_dir()?;
+    let instance = xasma_native::exclusive_instance(&data_root).map_err(|error| {
+        rfd::MessageDialog::new()
+            .set_title("XASMA data is in use")
+            .set_description(&error)
+            .show();
+        std::io::Error::other(error)
+    })?;
+    app.manage(DesktopInstance { _handle: instance });
     let resources = app.path().resource_dir()?.join("media-tools");
     let (mut ffmpeg, mut ffprobe) = (resources.join("ffmpeg.exe"), resources.join("ffprobe.exe"));
     let expected = [env!("XASMA_FFMPEG_SHA256"), env!("XASMA_FFPROBE_SHA256")];
@@ -269,7 +281,7 @@ fn setup(app: &mut tauri::App) -> std::result::Result<(), Box<dyn std::error::Er
             }
         }
     }
-    let service = Service::open(app.path().app_local_data_dir()?, ffmpeg, ffprobe).map_err(|error| {
+    let service = Service::open(data_root, ffmpeg, ffprobe).map_err(|error| {
         rfd::MessageDialog::new().set_title("XASMA local data error").set_description(format!("{}\nPreserve your app data directory. See the backup/recovery documentation before making changes.", bounded(&error))).show();
         std::io::Error::other(error)
     })?;

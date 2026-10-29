@@ -48,3 +48,12 @@ Starting commit: d62c0f1eeb1b2030f3cc132c24851200d82539c7.
 - Run 40962692129 (aea7c7b) contains the Windows file-handle fix and UCRT64 source build; status must be inspected before claiming package success. A later final-source run must include the new settings/silent smoke checks before it is accepted as the final artifact.
 
 - Run 40962692129 confirmed all six native tests pass on Windows with the source-built bundled binaries. NSIS packaging then failed (exit 1), with no readable guest logs or useful annotation. Added bounded packaging diagnostics preserving failure status and Rust-cache-on-failure; this is a targeted diagnostic rerun, not a success claim. No installer artifact exists for that run.
+
+- Final concurrency review added a kernel-held, profile-specific exclusive file handle before opening the native catalog. Two desktop launches cannot concurrently mutate it. Local Windows-target check and six Linux native tests passed; the new Windows-only lock regression test awaits the next Windows run.
+
+## Release-build checksum parser failure
+
+- Run 40965090903 (3dce5cc) passed the JS/browser checks and all six Windows native integration tests. The diagnostic identifies the release build's `build.rs` guard, not a conversion failure: it could not find the executable checksums.
+- GNU sha256sum binary-mode manifests use `*ffmpeg.exe` / `*ffprobe.exe` (Windows default). The original build parser compared the raw token to the bare filename, so it disabled tools in debug and failed closed in release. A shared strict parser now accepts standard binary/text markers and CRLF, normalizes hexadecimal case, and rejects invalid, missing, duplicate or ambiguous entries. Two regression tests retain the integrity requirement. Installed-resource verification accepts the same binary marker.
+- The Windows-only exclusive-profile-handle test adds coverage for simultaneous launches and crash-safe lock release. Final Windows source now expects 2 checksum unit tests and 7 integration tests. Local Linux checks run the 2 checksum tests and 6 applicable integration tests.
+- Final packaging and silent-install results must be taken from the final feature-branch run. PR creation remains blocked by the GitHub API network CONNECT policy; no merge, site deployment, Release, visibility or billing change occurred.

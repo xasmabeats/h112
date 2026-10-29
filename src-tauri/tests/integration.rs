@@ -292,3 +292,15 @@ fn bounded_media_process_is_actually_killed_when_cancelled() {
     assert!(error.contains("cancelled"), "{error}");
     assert!(began.elapsed() < Duration::from_secs(3));
 }
+
+#[cfg(windows)]
+#[test]
+fn desktop_data_lock_excludes_second_host_and_recovers_after_handle_close() {
+    let root = tempfile::tempdir().unwrap();
+    let first = xasma_native::exclusive_instance(root.path()).unwrap();
+    assert!(xasma_native::exclusive_instance(root.path()).is_err());
+    drop(first);
+    let recovered = xasma_native::exclusive_instance(root.path()).unwrap();
+    drop(recovered);
+    assert!(root.path().join("instance.lock").exists());
+}

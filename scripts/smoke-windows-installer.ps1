@@ -21,7 +21,7 @@ foreach ($file in @('ffmpeg.exe','ffprobe.exe','SHA256SUMS','COPYING.GPLv2','X26
   if (!(Test-Path (Join-Path $tools $file))) { throw "Installed tool/source/license resource missing: $file" }
 }
 foreach ($file in @('ffmpeg.exe','ffprobe.exe')) {
-  $line = @(Get-Content (Join-Path $tools 'SHA256SUMS') | Where-Object { $_ -match "\s+$([Regex]::Escape($file))$" })
+  $line = @(Get-Content (Join-Path $tools 'SHA256SUMS') | Where-Object { $_ -match "\s+\*?$([Regex]::Escape($file))$" })
   if ($line.Count -ne 1) { throw "Missing installed checksum: $file" }
   $expected = ($line[0] -split '\s+')[0]
   $actual = (Get-FileHash (Join-Path $tools $file) -Algorithm SHA256).Hash

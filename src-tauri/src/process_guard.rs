@@ -57,3 +57,20 @@ pub fn track(child: &mut Child) -> Result<ProcessGuard> {
         }
     }
 }
+
+/// A kernel-held exclusive file handle prevents two desktop hosts from writing
+/// the same catalog, including across Windows sessions. The file may remain
+/// after a crash; the OS releases the handle, so no stale PID cleanup is needed.
+#[cfg(windows)]
+pub fn exclusive_instance(root: &std::path::Path) -> Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .share_mode(0)
+        .open(root.join("instance.lock"))
+        .map_err(|e| format!("Cannot open the application data exclusively. Close other XASMA windows and retry. {e}"))
+}

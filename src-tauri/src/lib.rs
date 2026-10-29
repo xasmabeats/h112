@@ -2,6 +2,8 @@ pub mod archive;
 pub mod media;
 pub mod model;
 mod process_guard;
+#[cfg(windows)]
+pub use process_guard::exclusive_instance;
 pub mod render;
 use model::*;
 use sha2::{Digest, Sha256};
@@ -223,3 +225,5 @@ impl Service {
         self.active.lock().map(|a| a.is_some()).unwrap_or(true)
     }
 }
+
+pub mod tool_checksums;

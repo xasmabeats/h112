@@ -1,3 +1,5 @@
+#[path = "src/tool_checksums.rs"]
+mod tool_checksums;
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
@@ -7,22 +9,15 @@ fn main() {
         ("ffmpeg.exe", "XASMA_FFMPEG_SHA256"),
         ("ffprobe.exe", "XASMA_FFPROBE_SHA256"),
     ] {
-        let hash = sums
-            .lines()
-            .find_map(|line| {
-                let mut parts = line.split_whitespace();
-                let h = parts.next()?;
-                if parts.next()? == file && h.len() == 64 {
-                    Some(h)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or("");
-        assert!(
-            !hash.is_empty() || std::env::var("PROFILE").as_deref() != Ok("release"),
-            "Verified media tools and SHA256SUMS must exist before release compilation"
-        );
+        let parsed = tool_checksums::tool_checksum(&sums, file);
+        if std::env::var("PROFILE").as_deref() == Ok("release") {
+            assert!(
+                parsed.is_ok(),
+                "Verified media tools required: {}",
+                parsed.as_ref().unwrap_err()
+            );
+        }
+        let hash = parsed.unwrap_or_default();
         println!("cargo:rustc-env={var}={hash}");
     }
     println!("cargo:rerun-if-changed=resources/media-tools/SHA256SUMS");

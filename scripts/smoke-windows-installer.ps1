@@ -27,6 +27,16 @@ foreach ($file in @('ffmpeg.exe','ffprobe.exe')) {
   $actual = (Get-FileHash (Join-Path $tools $file) -Algorithm SHA256).Hash
   if ($expected -ne $actual) { throw "Installed tool checksum mismatch: $file" }
 }
+# Execute installed tools without build-toolchain directories in PATH. This catches
+# accidentally dynamic non-system DLL dependencies hidden by the CI environment.
+$originalSearchPath = $env:PATH
+try {
+  $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+  foreach ($file in @('ffmpeg.exe','ffprobe.exe')) {
+    $probe = Start-Process -FilePath (Join-Path $tools $file) -ArgumentList '-version' -Wait -PassThru -NoNewWindow
+    if ($probe.ExitCode -ne 0) { throw "Installed tool failed without development PATH: $file ($($probe.ExitCode))" }
+  }
+} finally { $env:PATH = $originalSearchPath }
 # Check payload architecture, not the NSIS bootstrapper's own architecture.
 $stream = [IO.File]::OpenRead($app)
 try {
@@ -48,7 +58,7 @@ if (!(Test-Path $marker)) { throw 'Silent uninstall removed the synthetic applic
 
 '## Installer smoke verification' | Add-Content $env:GITHUB_STEP_SUMMARY
 "Commit: $env:GITHUB_SHA" | Add-Content $env:GITHUB_STEP_SUMMARY
-'Passed: silent per-user install, installed x64 payload, tool hashes, corresponding source/license resources, silent in-place uninstall, synthetic app-data retention.' | Add-Content $env:GITHUB_STEP_SUMMARY
+'Passed: silent per-user install, installed x64 payload, tool hashes/execution without development PATH, corresponding source/license resources, silent in-place uninstall, synthetic app-data retention.' | Add-Content $env:GITHUB_STEP_SUMMARY
 'Not performed: interactive GUI, file picker/drag-drop, actual WebView2 first-install download, real-user desktop playback.' | Add-Content $env:GITHUB_STEP_SUMMARY
 # Clean only the owned fixture marker and the explicitly unique install directory.
 Remove-Item $marker

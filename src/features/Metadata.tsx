@@ -4,6 +4,7 @@ import { Copy, RefreshCw, Save, Check, FileText } from 'lucide-react';
 import { useData } from '../app/context';
 import { saveBeat } from '../db';
 import { generate } from '../lib/metadata';
+import { event } from '../lib/releases';
 import type { Metadata as MetadataType } from '../types';
 import { PageHeader, Field, Empty, ErrorMessage, errorText } from '../components/ui';
 const labels: Record<keyof MetadataType, string> = {
@@ -28,6 +29,10 @@ export default function Metadata() {
     [dirty, setDirty] = useState(false),
     [copied, setCopied] = useState(''),
     [error, setError] = useState('');
+  const [selectedFields, setSelectedFields] = useState<(keyof MetadataType)[]>(
+    Object.keys(labels) as (keyof MetadataType)[],
+  );
+  const [dirtyFields, setDirtyFields] = useState<(keyof MetadataType)[]>([]);
   const beat = beats.find((b) => b.id === id);
   const blocker = useBlocker(dirty);
   useEffect(() => {
@@ -49,24 +54,38 @@ export default function Metadata() {
   useEffect(() => {
     setResult(beat ? (beat.metadata ?? generate(beat, settings, templates, templateId)) : null);
     setDirty(false);
+    setDirtyFields([]);
   }, [id]);
   const preview = beat ? generate(beat, settings, templates, templateId) : null;
   function regenerate() {
-    if (dirty && !confirm('Replace your unsaved edits with generated text?')) return;
+    if (!selectedFields.length) return;
     if (
-      beat?.metadata &&
-      !dirty &&
-      !confirm('Regenerate? Saved metadata stays unchanged until you save again.')
+      (dirtyFields.some((key) => selectedFields.includes(key)) || !!beat?.metadata) &&
+      !confirm(
+        'Replace selected fields with template-generated text? Unsaved or saved edits in these fields will be replaced. Other fields stay unchanged.',
+      )
     )
       return;
-    setResult(preview);
+    if (!preview || !beat) return;
+    setResult((previous) => {
+      const next = { ...(previous ?? preview) };
+      for (const key of selectedFields) next[key] = preview[key];
+      return next;
+    });
+    setDirtyFields((fields) => [...new Set([...fields, ...selectedFields])]);
     setDirty(true);
+    void event(
+      'metadata_generated',
+      beat.id,
+      `Template-based regeneration: ${selectedFields.join(', ')}`,
+    ).catch((e) => setError(errorText(e)));
   }
   async function save() {
     if (!beat || !result) return;
     try {
       await saveBeat({ ...beat, metadata: result });
       setDirty(false);
+      setDirtyFields([]);
       notify('Metadata saved to beat');
     } catch (e) {
       setError(errorText(e));
@@ -104,6 +123,7 @@ export default function Metadata() {
           <h2>
             <FileText size={18} /> Release inputs
           </h2>
+          <p className="muted small-text">Template-based · local · not AI</p>
           <Field label="Beat">
             <select
               value={id}
@@ -152,13 +172,74 @@ export default function Metadata() {
               ))}
             </dl>
           )}
-          <button className="button wide" disabled={!beat} onClick={regenerate}>
+          <fieldset className="regenerate-fields">
+            <legend className="muted small-text">Fields to regenerate</legend>
+            {(Object.keys(labels) as (keyof MetadataType)[]).map((key) => (
+              <label key={key}>
+                <input
+                  type="checkbox"
+                  checked={selectedFields.includes(key)}
+                  onChange={(e) =>
+                    setSelectedFields((fields) =>
+                      e.target.checked ? [...fields, key] : fields.filter((f) => f !== key),
+                    )
+                  }
+                />
+                Regenerate {labels[key]}
+              </label>
+            ))}
+          </fieldset>
+          <button
+            className="button wide"
+            disabled={!beat || !selectedFields.length}
+            onClick={regenerate}
+          >
             <RefreshCw size={15} /> Generate / regenerate
           </button>
           <p className="muted small-text">
             Edit beat inputs in the Beat Editor. Producer, licensing, contact, and social links come
             from Settings.
           </p>
+          {beat && (
+            <details>
+              <summary>Title suggestions (templates)</summary>
+              <div className="suggestions">
+                {templates
+                  .filter((t) => t.kind === 'title')
+                  .map((t) => {
+                    const suggestion = generate(beat, settings, templates, t.id).title;
+                    return (
+                      <button
+                        key={t.id}
+                        className="button"
+                        onClick={() => {
+                          if (
+                            (dirtyFields.includes('title') || beat.metadata) &&
+                            !confirm(
+                              'Replace only the current title with this template suggestion?',
+                            )
+                          )
+                            return;
+                          setResult((current) => ({
+                            ...(current ?? generate(beat, settings, templates)),
+                            title: suggestion,
+                          }));
+                          setDirty(true);
+                          setDirtyFields((fields) => [...new Set([...fields, 'title' as const])]);
+                          void event(
+                            'metadata_generated',
+                            beat.id,
+                            `Title suggestion: ${t.name}`,
+                          ).catch((e) => setError(errorText(e)));
+                        }}
+                      >
+                        {suggestion}
+                      </button>
+                    );
+                  })}
+              </div>
+            </details>
+          )}
           {preview && (
             <details>
               <summary>Live template preview</summary>
@@ -206,6 +287,7 @@ export default function Metadata() {
                     onChange={(e) => {
                       setResult({ ...result, [key]: e.target.value });
                       setDirty(true);
+                      setDirtyFields((fields) => [...new Set([...fields, key])]);
                     }}
                   />
                   {limits[key] && result[key].length > limits[key] && (

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, Component } from 'react';
+import { useEffect, useState, type ReactNode, Component, lazy, Suspense } from 'react';
 import {
   createHashRouter,
   RouterProvider,
@@ -15,6 +15,8 @@ import {
   CalendarDays,
   Columns3,
   Layers,
+  Clapperboard,
+  History as HistoryIcon,
   Settings as SettingsIcon,
   Menu,
   X,
@@ -26,6 +28,7 @@ import {
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { db, defaults, initialize } from '../db';
 import { DataContext } from './context';
+import { NativeProvider } from '../platform/NativeProvider';
 import Dashboard from '../features/Dashboard';
 import Library from '../features/Library';
 import Editor from '../features/Editor';
@@ -34,6 +37,8 @@ import Calendar from '../features/Calendar';
 import Metadata from '../features/Metadata';
 import Templates from '../features/Templates';
 import Settings from '../features/Settings';
+const Studio = lazy(() => import('../features/releases/Studio'));
+const History = lazy(() => import('../features/releases/History'));
 import { errorText } from '../components/ui';
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -42,6 +47,8 @@ const nav = [
   { to: '/calendar', label: 'Release Calendar', icon: CalendarDays },
   { to: '/pipeline', label: 'Release Pipeline', icon: Columns3 },
   { to: '/templates', label: 'Templates', icon: Layers },
+  { to: '/studio', label: 'Release Studio', icon: Clapperboard },
+  { to: '/history', label: 'Release History', icon: HistoryIcon },
 ];
 interface InstallEvent extends Event {
   prompt: () => Promise<void>;
@@ -85,7 +92,12 @@ function Shell() {
   const prefs = settings ?? defaults;
   return (
     <DataContext.Provider
-      value={{ beats: beats ?? [], templates: templates ?? [], settings: prefs, notify: setToast }}
+      value={{
+        beats: beats?.filter((b) => !b.deletedAt) ?? [],
+        templates: templates ?? [],
+        settings: prefs,
+        notify: setToast,
+      }}
     >
       <div className={`app ${prefs.appearance === 'compact' ? 'compact' : ''}`}>
         <div className="mobile-header">
@@ -156,7 +168,7 @@ function Shell() {
             )}
             <div className="sidebar-footer">
               <span>XASMA STUDIO SYSTEM</span>
-              <span>v1.0</span>
+              <span>v2.0</span>
             </div>
           </div>
         </aside>
@@ -187,7 +199,9 @@ function Shell() {
                 </p>
               </div>
             ) : ready && beats && templates ? (
-              <Outlet />
+              <Suspense fallback={<p role="status">Opening section…</p>}>
+                <Outlet />
+              </Suspense>
             ) : (
               <p role="status">Opening your workspace…</p>
             )}
@@ -252,6 +266,8 @@ const router = createHashRouter([
       { path: 'calendar', element: <Calendar /> },
       { path: 'pipeline', element: <Pipeline /> },
       { path: 'templates', element: <Templates /> },
+      { path: 'studio', element: <Studio /> },
+      { path: 'history', element: <History /> },
       { path: 'settings', element: <Settings /> },
       {
         path: '*',
@@ -268,17 +284,19 @@ const router = createHashRouter([
 export default function App() {
   return (
     <ErrorBoundary>
-      <a
-        href="#main"
-        className="skip-link"
-        onClick={(e) => {
-          e.preventDefault();
-          document.getElementById('main')?.focus();
-        }}
-      >
-        Skip to content
-      </a>
-      <RouterProvider router={router} />
+      <NativeProvider>
+        <a
+          href="#main"
+          className="skip-link"
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById('main')?.focus();
+          }}
+        >
+          Skip to content
+        </a>
+        <RouterProvider router={router} />
+      </NativeProvider>
     </ErrorBoundary>
   );
 }

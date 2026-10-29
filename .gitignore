@@ -26,3 +26,12 @@ xasma-backup-*.json
 *.log
 .DS_Store
 Thumbs.db
+
+# Native build products and bundled build inputs
+src-tauri/target/
+src-tauri/gen/
+src-tauri/resources/media-tools/*
+!src-tauri/resources/media-tools/.gitkeep
+/desktop-dist/
+
+/installer-artifacts/

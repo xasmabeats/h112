@@ -1,0 +1,94 @@
+name: Windows desktop installer (free public runners)
+on:
+  push:
+    branches: [feature/xasma-desktop-v2]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    # GitHub-hosted standard runners are free for public repositories. Private
+    # repository allowances/billing cannot be inferred; never start a paid run.
+    if: github.event.repository.private == false
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install chromium
+      - run: npm run test:e2e
+        env:
+          CI: true
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make diffutils tar curl
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-zlib
+      - uses: actions/cache/restore@v4
+        id: media-cache
+        with:
+          path: src-tauri/resources/media-tools
+          key: windows-x64-media-${{ hashFiles('scripts/build-media-tools.sh', 'docs/FFMPEG-LICENSING.md') }}
+      - name: Build checksum-pinned GPL media tools with source and notices
+        if: steps.media-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash scripts/build-media-tools.sh
+      - uses: actions/cache/save@v4
+        if: steps.media-cache.outputs.cache-hit != 'true'
+        with:
+          path: src-tauri/resources/media-tools
+          key: ${{ steps.media-cache.outputs.cache-primary-key }}
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Check native Windows application
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+      - name: Real conversion, process cancellation, archive and recovery tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc -- --test-threads=1
+        env:
+          XASMA_TEST_FFMPEG: ${{ github.workspace }}\src-tauri\resources\media-tools\ffmpeg.exe
+          XASMA_TEST_FFPROBE: ${{ github.workspace }}\src-tauri\resources\media-tools\ffprobe.exe
+      - run: npm run desktop:build -- --ci
+      - name: Prepare installer provenance and checksum
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $out = "installer-artifacts"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $installers = @(Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe)
+          if ($installers.Count -ne 1) { throw "Expected exactly one NSIS installer" }
+          $name = "XASMA-$version-windows-x64-setup.exe"
+          Copy-Item $installers[0].FullName "$out/$name"
+          $hash = (Get-FileHash "$out/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name" | Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
+          "Commit: $env:GITHUB_SHA`nVersion: $version`nArchitecture: x64`nUnsigned NSIS installer; not runtime/GUI tested." | Set-Content "$out/BUILD-INFO.txt"
+          "## XASMA installer`nCommit: $env:GITHUB_SHA`nArtifact: $name`nSHA-256: $hash" | Add-Content $env:GITHUB_STEP_SUMMARY
+          Copy-Item docs/FFMPEG-LICENSING.md "$out/"
+          Copy-Item src-tauri/resources/media-tools/BUILD-CONFIGURATION.txt "$out/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XASMA-2.0.0-windows-x64-${{ github.sha }}
+          path: installer-artifacts/
+          if-no-files-found: error
+          retention-days: 14

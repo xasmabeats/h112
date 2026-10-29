@@ -1,6 +1,14 @@
+import type {
+  ManagedMedia,
+  ReleaseDraft,
+  RenderJob,
+  ExportRecord,
+  HistoryEvent,
+} from '../types/desktop';
+import { jobStates } from '../types/desktop';
 import { db } from '../db';
 import { statuses, templateKinds, type Beat, type Settings, type Template } from '../types';
-export interface Backup {
+interface LegacyBackup {
   schemaVersion: 1;
   exportedAt: string;
   attachments: 'not-supported';
@@ -22,7 +30,7 @@ const date = (v: unknown) =>
       String(new Date(v + 'T12:00:00').getMonth() + 1).padStart(2, '0'),
       String(new Date(v + 'T12:00:00').getDate()).padStart(2, '0'),
     ].join('-') === v);
-export function validateBackup(raw: unknown): Backup {
+function validateLegacyBackup(raw: unknown): LegacyBackup {
   if (
     !object(raw) ||
     raw.schemaVersion !== 1 ||
@@ -33,7 +41,7 @@ export function validateBackup(raw: unknown): Backup {
     throw new Error('Unsupported or invalid XASMA backup.');
   for (const key of ['beats', 'templates', 'settings'])
     if (!Array.isArray(raw[key])) throw new Error(`Missing ${key} collection.`);
-  const b = raw as unknown as Backup;
+  const b = raw as unknown as LegacyBackup;
   if (b.settings.length !== 1)
     throw new Error('Backup must contain exactly one preferences record.');
   if (b.beats.length > 50000 || b.templates.length > 10000)
@@ -110,46 +118,250 @@ export function validateBackup(raw: unknown): Backup {
       throw new Error('Invalid settings record.');
   return b;
 }
+export interface Backup extends Omit<LegacyBackup, 'schemaVersion' | 'attachments'> {
+  schemaVersion: 2;
+  attachments: 'references-only';
+  media: ManagedMedia[];
+  releases: ReleaseDraft[];
+  jobs: RenderJob[];
+  exports: ExportRecord[];
+  events: HistoryEvent[];
+}
+const extraTables = ['media', 'releases', 'jobs', 'exports', 'events'] as const;
+const metadataValid = (v: unknown) =>
+  object(v) &&
+  strings(v, ['title', 'description', 'tags', 'hashtags', 'filename', 'pinnedComment']);
+const instant = (v: unknown) => typeof v === 'string' && v.length <= 40 && !isNaN(Date.parse(v));
+const reference = (id: unknown, ids: Set<string>) => typeof id === 'string' && ids.has(id);
+export function validateBackup(raw: unknown): Backup {
+  if (!object(raw)) throw new Error('Invalid backup object.');
+  if (raw.schemaVersion === 1) {
+    const legacy = validateLegacyBackup(raw);
+    return {
+      ...legacy,
+      schemaVersion: 2,
+      attachments: 'references-only',
+      media: [],
+      releases: [],
+      jobs: [],
+      exports: [],
+      events: [],
+    };
+  }
+  if (raw.schemaVersion !== 2 || raw.attachments !== 'references-only')
+    throw new Error('Unsupported backup version or binary coverage declaration.');
+  // Reuse the genuine v1 field validation before validating all additive records.
+  const base = validateLegacyBackup({ ...raw, schemaVersion: 1, attachments: 'not-supported' });
+  const backup = raw as unknown as Backup;
+  for (const key of extraTables) {
+    if (!Array.isArray(raw[key]) || raw[key].length > (key === 'events' ? 200000 : 50000))
+      throw new Error(`Invalid ${key} collection.`);
+    const ids = new Set();
+    for (const item of raw[key]) {
+      if (
+        !object(item) ||
+        typeof item.id !== 'string' ||
+        !item.id ||
+        item.id.length > 160 ||
+        ids.has(item.id)
+      )
+        throw new Error(`Invalid or duplicate ${key} IDs.`);
+      ids.add(item.id);
+    }
+  }
+  const beatIds = new Set(base.beats.map((b) => b.id)),
+    mediaIds = new Set(backup.media.map((m) => m.id)),
+    releaseIds = new Set(backup.releases.map((r) => r.id)),
+    jobIds = new Set(backup.jobs.map((j) => j.id));
+  for (const m of backup.media) {
+    if (
+      !['audio', 'artwork'].includes(m.kind) ||
+      !['mp3', 'wav', 'png', 'jpg'].includes(m.format) ||
+      m.managed !== true ||
+      m.version !== 1 ||
+      typeof m.originalName !== 'string' ||
+      typeof m.mime !== 'string' ||
+      !Number.isSafeInteger(m.bytes) ||
+      m.bytes <= 0 ||
+      m.bytes > (m.kind === 'audio' ? 300 : 20) * 1024 * 1024 ||
+      !/^[a-f0-9]{64}$/.test(m.sha256) ||
+      !instant(m.createdAt) ||
+      (m.kind === 'audio' &&
+        (!['mp3', 'wav'].includes(m.format) ||
+          typeof m.duration !== 'number' ||
+          !Number.isFinite(m.duration) ||
+          m.duration <= 0 ||
+          m.duration > 7200)) ||
+      (m.kind === 'artwork' &&
+        (!['png', 'jpg'].includes(m.format) ||
+          !Number.isInteger(m.width) ||
+          !Number.isInteger(m.height) ||
+          (m.width ?? 0) <= 0 ||
+          (m.height ?? 0) <= 0 ||
+          (m.width ?? 0) > 12000 ||
+          (m.height ?? 0) > 12000 ||
+          (m.width ?? 0) * (m.height ?? 0) > 32000000))
+    )
+      throw new Error('Invalid managed media record.');
+  }
+  for (const beat of backup.beats) {
+    if (
+      (beat.audioId && !mediaIds.has(beat.audioId)) ||
+      (beat.artworkId && !mediaIds.has(beat.artworkId)) ||
+      (beat.deletedAt && !instant(beat.deletedAt))
+    )
+      throw new Error('Beat references missing media or an invalid deletion date.');
+  }
+  for (const release of backup.releases) {
+    if (
+      !reference(release.beatId, beatIds) ||
+      typeof release.name !== 'string' ||
+      !metadataValid(release.metadata) ||
+      typeof release.ready !== 'boolean' ||
+      !instant(release.createdAt) ||
+      !instant(release.updatedAt) ||
+      (release.audioId !== '' && !reference(release.audioId, mediaIds)) ||
+      (release.artworkId !== '' && !reference(release.artworkId, mediaIds)) ||
+      (release.manualPublication !== null &&
+        (!object(release.manualPublication) ||
+          release.manualPublication.userReported !== true ||
+          !instant(release.manualPublication.confirmedAt) ||
+          typeof release.manualPublication.url !== 'string'))
+    )
+      throw new Error('Invalid release or missing release references.');
+  }
+  for (const job of backup.jobs) {
+    if (
+      !object(job.request) ||
+      !reference(job.request.beatId, beatIds) ||
+      !reference(job.request.releaseId, releaseIds) ||
+      !reference(job.request.audioId, mediaIds) ||
+      !reference(job.request.artworkId, mediaIds) ||
+      !metadataValid(job.request.metadata) ||
+      !object(job.audio) ||
+      !object(job.artwork) ||
+      job.audio.id !== job.request.audioId ||
+      job.artwork.id !== job.request.artworkId ||
+      !jobStates.includes(job.state) ||
+      !Number.isInteger(job.attempt) ||
+      job.attempt < 1 ||
+      !Number.isFinite(job.progress) ||
+      job.progress < 0 ||
+      job.progress > 1 ||
+      !instant(job.createdAt) ||
+      !instant(job.updatedAt) ||
+      (job.error !== null && typeof job.error !== 'string') ||
+      (job.outputBytes !== null &&
+        (!Number.isSafeInteger(job.outputBytes) || job.outputBytes < 0)) ||
+      (job.outputSha256 !== null && !/^[a-f0-9]{64}$/.test(job.outputSha256))
+    )
+      throw new Error('Invalid render job or source references.');
+  }
+  for (const record of backup.exports) {
+    if (
+      !reference(record.jobId, jobIds) ||
+      !reference(record.releaseId, releaseIds) ||
+      !reference(record.beatId, beatIds) ||
+      !['video', 'release-folder'].includes(record.kind) ||
+      !instant(record.createdAt) ||
+      typeof record.destinationName !== 'string' ||
+      !Number.isSafeInteger(record.bytes) ||
+      record.bytes <= 0
+    )
+      throw new Error('Invalid export record.');
+  }
+  for (const e of backup.events) {
+    if (
+      !reference(e.beatId, beatIds) ||
+      (e.releaseId && !releaseIds.has(e.releaseId)) ||
+      (e.jobId && !jobIds.has(e.jobId)) ||
+      typeof e.type !== 'string' ||
+      typeof e.detail !== 'string' ||
+      e.detail.length > 4096 ||
+      !instant(e.at) ||
+      (e.status !== undefined && typeof e.status !== 'string')
+    )
+      throw new Error('Invalid history event or references.');
+  }
+  return backup;
+}
 export async function exportBackup(): Promise<Backup> {
-  return db.transaction('r', db.beats, db.templates, db.settings, async () => ({
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    attachments: 'not-supported',
-    beats: await db.beats.toArray(),
-    templates: await db.templates.toArray(),
-    settings: await db.settings.toArray(),
-  }));
+  return db.transaction(
+    'r',
+    [db.beats, db.templates, db.settings, db.media, db.releases, db.jobs, db.exports, db.events],
+    async () => ({
+      schemaVersion: 2,
+      exportedAt: new Date().toISOString(),
+      attachments: 'references-only',
+      beats: await db.beats.toArray(),
+      templates: await db.templates.toArray(),
+      settings: await db.settings.toArray(),
+      media: await db.media.toArray(),
+      releases: await db.releases.toArray(),
+      jobs: await db.jobs.toArray(),
+      exports: await db.exports.toArray(),
+      events: await db.events.toArray(),
+    }),
+  );
 }
 export async function restoreBackup(raw: unknown, mode: 'merge' | 'replace') {
   const b = validateBackup(raw);
-  await db.transaction('rw', db.beats, db.templates, db.settings, async () => {
-    if (mode === 'replace') {
-      await db.beats.clear();
-      await db.templates.clear();
-      await db.settings.clear();
-    }
-    const beats = b.beats;
-    if (mode === 'merge') {
-      for (const row of beats) if (!(await db.beats.get(row.id))) await db.beats.add(row);
-      for (const row of b.templates)
-        if (!(await db.templates.get(row.id)))
-          await db.templates.add({
+  await db.transaction(
+    'rw',
+    [db.beats, db.templates, db.settings, db.media, db.releases, db.jobs, db.exports, db.events],
+    async () => {
+      if (mode === 'replace') {
+        for (const table of [
+          db.beats,
+          db.templates,
+          db.settings,
+          db.media,
+          db.releases,
+          db.jobs,
+          db.exports,
+          db.events,
+        ])
+          await table.clear();
+      }
+      for (const beat of b.beats)
+        if (mode === 'replace' || !(await db.beats.get(beat.id))) await db.beats.put(beat);
+      if (mode === 'replace') await db.templates.bulkPut(b.templates);
+      else
+        for (const row of b.templates)
+          if (!(await db.templates.get(row.id)))
+            await db.templates.put({
+              ...row,
+              isDefault:
+                row.isDefault &&
+                !(await db.templates
+                  .where('kind')
+                  .equals(row.kind)
+                  .filter((t) => t.isDefault)
+                  .count()),
+            });
+      if (mode === 'replace' || !(await db.settings.get('preferences')))
+        await db.settings.bulkPut(b.settings);
+      for (const row of b.media)
+        if (mode === 'replace' || !(await db.media.get(row.id))) await db.media.put(row);
+      for (const row of b.releases)
+        if (mode === 'replace' || !(await db.releases.get(row.id))) await db.releases.put(row);
+      for (const row of b.jobs)
+        if (mode === 'replace' || !(await db.jobs.get(row.id)))
+          await db.jobs.put({
             ...row,
-            isDefault:
-              row.isDefault &&
-              !(await db.templates
-                .where('kind')
-                .equals(row.kind)
-                .filter((t) => t.isDefault)
-                .count()),
+            state: ['Probing', 'Preparing', 'Encoding', 'Validating'].includes(row.state)
+              ? 'Interrupted'
+              : row.state,
+            error: ['Probing', 'Preparing', 'Encoding', 'Validating'].includes(row.state)
+              ? 'Imported attempt was not resumed; retry creates a new attempt.'
+              : row.error,
           });
-      if (!(await db.settings.get('preferences'))) await db.settings.bulkPut(b.settings);
-    } else {
-      await db.beats.bulkPut(beats);
-      await db.templates.bulkPut(b.templates);
-      await db.settings.bulkPut(b.settings);
-    }
-  });
+      for (const row of b.exports)
+        if (mode === 'replace' || !(await db.exports.get(row.id))) await db.exports.put(row);
+      for (const row of b.events)
+        if (mode === 'replace' || !(await db.events.get(row.id))) await db.events.put(row);
+    },
+  );
 }
 export function download(content: string, name: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([content], { type }));

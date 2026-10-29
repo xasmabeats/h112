@@ -47,3 +47,28 @@ it('initializes a beat from its metadata query link and preserves edits on live 
   expect(title).toHaveValue('My manual title');
   expect(screen.getByRole('button', { name: 'Save to beat' })).toBeEnabled();
 });
+
+it('regenerates only selected fields and requires confirmation before replacing manual text', () => {
+  const { beat } = setup('/metadata?beat=BEAT_ID');
+  const title = screen.getByRole('textbox', { name: 'YouTube video title', exact: true });
+  fireEvent.change(title, { target: { value: 'Keep my manual title' } });
+  for (const box of screen.getAllByRole('checkbox'))
+    if ((box as HTMLInputElement).checked) fireEvent.click(box);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Regenerate YouTube tags', exact: true }));
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Generate / regenerate' }));
+  expect(title).toHaveValue('Keep my manual title');
+  expect(confirm).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Regenerate YouTube video title', exact: true }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Generate / regenerate' }));
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(title).toHaveValue('Keep my manual title');
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Generate / regenerate' }));
+  expect(title).toHaveValue(
+    `Chosen Artist Type Beat — "Midnight Protocol" | Drill ${new Date().getFullYear()}`,
+  );
+  confirm.mockRestore();
+});

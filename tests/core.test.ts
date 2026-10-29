@@ -16,6 +16,7 @@ beforeEach(async () => {
   await db.beats.clear();
   await db.templates.clear();
   await db.settings.clear();
+  for (const table of [db.media, db.releases, db.jobs, db.exports, db.events]) await table.clear();
   await initialize();
 });
 describe('persistent beat workflow', () => {
@@ -128,7 +129,7 @@ describe('metadata and portable backups', () => {
     const b = await exportBackup();
     for (const invalid of [
       {},
-      { ...b, schemaVersion: 2 },
+      { ...b, schemaVersion: 99 },
       { ...b, beats: [b.beats[0], b.beats[0]] },
       { ...b, beats: [{ ...b.beats[0], bpm: 'wrong' }] },
       { ...b, beats: [{ ...b.beats[0], plannedDate: '2026-02-30' }] },
@@ -156,6 +157,7 @@ it('rolls back a failed replace import atomically', async () => {
   await saveBeat({ ...newBeat(), title: 'Original catalog' });
   const incoming = await exportBackup();
   incoming.beats = [{ ...newBeat(), title: 'Incoming catalog' }];
+  incoming.events = incoming.events.map((e) => ({ ...e, beatId: incoming.beats[0].id }));
   const write = vi
     .spyOn(db.templates, 'bulkPut')
     .mockRejectedValueOnce(new DOMException('Storage full', 'QuotaExceededError'));

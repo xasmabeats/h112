@@ -96,9 +96,14 @@ export default function Editor() {
         description="Capture the details. Shape the release."
         actions={
           existing && (
-            <Link className="button" to={`/metadata?beat=${beat.id}`}>
-              <FileText size={16} /> Generate metadata
-            </Link>
+            <>
+              <Link className="button" to={`/studio?beat=${beat.id}`}>
+                Release studio
+              </Link>
+              <Link className="button" to={`/metadata?beat=${beat.id}`}>
+                <FileText size={16} /> Generate metadata
+              </Link>
+            </>
           )
         }
       />

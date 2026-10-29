@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-release"
+description = "Enables the export_release command without any pre-configured scope."
+commands.allow = ["export_release"]
+
+[[permission]]
+identifier = "deny-export-release"
+description = "Denies the export_release command without any pre-configured scope."
+commands.deny = ["export_release"]

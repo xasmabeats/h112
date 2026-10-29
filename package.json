@@ -1,7 +1,7 @@
 {
   "name": "xasma-beat-release-manager",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -9,9 +9,14 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "format": "prettier --write src tests *.ts *.json *.html *.md .github/workflows/*.yml"
+    "format": "prettier --write src tests *.ts *.json *.html *.md .github/workflows/*.yml",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build --target x86_64-pc-windows-msvc --bundles nsis",
+    "build:desktop": "tsc -b && vite build --mode desktop",
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.12.4",
     "dexie": "^4.2.0",
     "dexie-react-hooks": "^4.2.0",
     "lucide-react": "^0.468.0",
@@ -22,6 +27,7 @@
   "devDependencies": {
     "@playwright/test": "^1.56.0",
     "@tailwindcss/vite": "^4.1.0",
+    "@tauri-apps/cli": "^2.12.4",
     "@testing-library/jest-dom": "^6.9.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.2.0",

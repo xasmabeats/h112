@@ -3,6 +3,8 @@ import { Save, Download, Upload, HardDrive, ShieldCheck } from 'lucide-react';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { useData } from '../app/context';
 import { db } from '../db';
+import { DesktopBackups } from './releases/DesktopBackups';
+import { isDesktop, platform } from '../platform';
 import { exportBackup, validateBackup, restoreBackup, download, type Backup } from '../lib/backup';
 import { PageHeader, Field, ErrorMessage, errorText } from '../components/ui';
 export default function Settings() {
@@ -63,6 +65,8 @@ export default function Settings() {
       return;
     setBusy(true);
     try {
+      if (isDesktop() && mode === 'replace')
+        await platform.createRecovery(JSON.stringify(await exportBackup()));
       await restoreBackup(preview, mode);
       setPreview(null);
       notify('Backup restored');
@@ -183,6 +187,7 @@ export default function Settings() {
           </button>
         </form>
         <aside>
+          <DesktopBackups />
           <section className="panel form-panel">
             <h2>
               <ShieldCheck size={18} /> Backups & restore
@@ -219,8 +224,8 @@ export default function Settings() {
               />
             </label>
             <p className="small-text muted">
-              Portable JSON includes beats, saved metadata, templates, preferences, and artwork
-              references. Audio and image binaries are not stored or included. Transfer this file
+              Schema-v2 JSON includes catalog, metadata, templates, preferences, release history and
+              media references. Audio, artwork and MP4 bytes are excluded. Transfer this file
               manually between devices.
             </p>
             {preview && (
@@ -230,7 +235,10 @@ export default function Settings() {
                   {preview.beats.length} beats · {preview.templates.length} templates ·{' '}
                   {preview.settings.length} preference records
                 </p>
-                <p className="muted">Exported {new Date(preview.exportedAt).toLocaleString()}</p>
+                <p className="muted">
+                  Schema {preview.schemaVersion} · Exported{' '}
+                  {new Date(preview.exportedAt).toLocaleString()}
+                </p>
                 <Field label="Import mode">
                   <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
                     <option value="merge">Merge — keep existing IDs and settings</option>

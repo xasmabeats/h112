@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Search, SlidersHorizontal, Copy, Trash2, ArrowUpRight, Music2 } from 'lucide-react';
 import { useData } from '../app/context';
-import { db, saveBeat } from '../db';
+import { db, saveBeat, removeBeat } from '../db';
 import { statuses, genres, type Beat } from '../types';
 import { PageHeader, Badge, Empty, errorText, ErrorMessage } from '../components/ui';
 export function filterBeats(
@@ -71,7 +71,7 @@ export default function Library() {
   async function remove(beat: Beat) {
     if (!confirm(`Delete “${beat.title}”? This cannot be undone.`)) return;
     try {
-      await db.beats.delete(beat.id);
+      await removeBeat(beat.id);
       notify('Beat deleted');
     } catch (e) {
       setError(errorText(e));

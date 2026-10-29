@@ -102,5 +102,7 @@ export function errorText(error: unknown) {
     ? error.name === 'QuotaExceededError'
       ? 'Browser storage is full. Export a backup and free storage before trying again.'
       : error.message
-    : 'Something went wrong. Please try again.';
+    : typeof error === 'string'
+      ? error
+      : 'Something went wrong. Please try again.';
 }

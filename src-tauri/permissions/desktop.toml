@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-desktop-operations"
+description = "ID-based managed media, render, backup and user-selected export operations only"
+commands.allow = ["desktop_snapshot", "pick_media", "import_drop", "start_render", "cancel_render", "export_release", "save_video", "open_output_folder", "portable_backup", "prepare_restore", "promote_restore", "finish_restore", "create_recovery"]

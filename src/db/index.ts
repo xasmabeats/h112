@@ -1,15 +1,44 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Beat, Template, Settings } from '../types';
-export const db = new Dexie('xasma-release-manager') as Dexie & {
+import type {
+  ManagedMedia,
+  ReleaseDraft,
+  RenderJob,
+  ExportRecord,
+  HistoryEvent,
+} from '../types/desktop';
+export type AppDatabase = Dexie & {
   beats: EntityTable<Beat, 'id'>;
   templates: EntityTable<Template, 'id'>;
   settings: EntityTable<Settings, 'id'>;
+  media: EntityTable<ManagedMedia, 'id'>;
+  releases: EntityTable<ReleaseDraft, 'id'>;
+  jobs: EntityTable<RenderJob, 'id'>;
+  exports: EntityTable<ExportRecord, 'id'>;
+  events: EntityTable<HistoryEvent, 'id'>;
 };
-db.version(1).stores({
-  beats: 'id,title,genre,status,plannedDate,updatedAt,*tags',
-  templates: 'id,kind',
-  settings: 'id',
-});
+export function createDatabase(name = 'xasma-release-manager') {
+  const database = new Dexie(name) as AppDatabase;
+
+  database.version(1).stores({
+    beats: 'id,title,genre,status,plannedDate,updatedAt,*tags',
+    templates: 'id,kind',
+    settings: 'id',
+  });
+  database.version(2).stores({
+    beats: 'id,title,genre,status,plannedDate,updatedAt,*tags',
+    templates: 'id,kind',
+    settings: 'id',
+    media: 'id,kind',
+    releases: 'id,beatId,updatedAt',
+    jobs: 'id,request.releaseId,request.beatId,state,updatedAt',
+    exports: 'id,releaseId,jobId,beatId',
+    events: 'id,beatId,releaseId,jobId,type,status,at',
+  });
+
+  return database;
+}
+export const db = createDatabase();
 export const defaults: Settings = {
   id: 'preferences',
   producer: 'XASMA',
@@ -115,7 +144,27 @@ export async function saveBeat(beat: Beat) {
   if (!beat.title.trim()) throw new Error('A beat title is required.');
   if (!Number.isFinite(beat.bpm) || beat.bpm < 1 || beat.bpm > 400)
     throw new Error('BPM must be between 1 and 400.');
-  await db.beats.put({ ...beat, title: beat.title.trim(), updatedAt: new Date().toISOString() });
+  await db.transaction('rw', db.beats, db.events, async () => {
+    const previous = await db.beats.get(beat.id);
+    const at = new Date().toISOString();
+    const saved = { ...beat, title: beat.title.trim(), updatedAt: at };
+    await db.beats.put(saved);
+    const type = !previous
+      ? 'beat_created'
+      : previous.status !== beat.status
+        ? 'production_status'
+        : JSON.stringify(previous.metadata) !== JSON.stringify(beat.metadata)
+          ? 'metadata_saved'
+          : 'beat_updated';
+    await db.events.add({
+      id: crypto.randomUUID(),
+      beatId: beat.id,
+      type,
+      status: beat.status,
+      at,
+      detail: type === 'metadata_saved' ? 'Metadata saved' : saved.title,
+    });
+  });
 }
 export async function changeStatus(beat: Beat, status: Beat['status']) {
   if (status === 'Published' && !window.confirm(`Confirm “${beat.title}” is published?`)) return;
@@ -127,4 +176,20 @@ export async function changeStatus(beat: Beat, status: Beat['status']) {
 }
 export function localDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export async function removeBeat(id: string) {
+  await db.transaction('rw', db.beats, db.events, async () => {
+    const beat = await db.beats.get(id);
+    if (!beat) return;
+    const at = new Date().toISOString();
+    await db.beats.update(id, { deletedAt: at, updatedAt: at });
+    await db.events.add({
+      id: crypto.randomUUID(),
+      beatId: id,
+      type: 'beat_deleted',
+      at,
+      detail: 'Removed from active library; retained for release provenance and backup recovery.',
+    });
+  });
 }

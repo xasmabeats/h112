@@ -36,6 +36,9 @@ export interface Beat {
   youtubeUrl: string;
   artwork: string;
   metadata: Metadata | null;
+  deletedAt?: string;
+  audioId?: string;
+  artworkId?: string;
 }
 export const templateKinds = [
   'title',

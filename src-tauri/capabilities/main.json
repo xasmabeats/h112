@@ -1,0 +1,1 @@
+{"identifier":"main","description":"Local media and release operations for the sole app window. No shell, general filesystem, or remote origins.","windows":["main"],"permissions":["core:event:allow-listen","core:event:allow-unlisten","allow-desktop-operations"]}

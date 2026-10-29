@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openSection } from './navigation';
 test('complete local release workflow, backups, mobile and offline', async ({
   page,
   context,
@@ -28,10 +29,10 @@ test('complete local release workflow, backups, mobile and offline', async ({
   await page.getByLabel('Filter genre').selectOption('Supertrap');
   await expect(page.getByText('No matching beats')).toBeVisible();
   await page.getByLabel('Filter genre').selectOption('');
-  await page.getByRole('link', { name: 'Release Pipeline', exact: true }).click();
+  await openSection(page, 'Release Pipeline', 'Release pipeline');
   await page.getByLabel('Status for Midnight Protocol').selectOption('Ready');
   await expect(page.getByLabel('Status for Midnight Protocol')).toHaveValue('Ready');
-  await page.getByRole('link', { name: 'Release Calendar', exact: true }).click();
+  await openSection(page, 'Release Calendar', 'Release calendar');
   await page.getByLabel('Release date', { exact: true }).fill('2027-01-15');
   await page.getByLabel('Beat', { exact: true }).selectOption({ label: 'Midnight Protocol' });
   await page.getByRole('button', { name: 'Assign / reschedule' }).click();
@@ -39,7 +40,7 @@ test('complete local release workflow, backups, mobile and offline', async ({
   await page.getByLabel('Release date', { exact: true }).fill('2027-01-22');
   await page.getByRole('button', { name: 'Assign / reschedule' }).click();
   await expect(page.getByText('2027-01-22', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'YouTube Metadata', exact: true }).click();
+  await openSection(page, 'YouTube Metadata', 'YouTube metadata');
   await page.getByLabel('Beat', { exact: true }).selectOption({ label: 'Midnight Protocol' });
   await expect(page.getByLabel('YouTube video title', { exact: true })).toHaveValue(
     /Chosen Artist/,
@@ -52,7 +53,7 @@ test('complete local release workflow, backups, mobile and offline', async ({
   await expect(page.getByLabel('YouTube video title', { exact: true })).toHaveValue(
     'Manual release title',
   );
-  await page.getByRole('link', { name: 'Settings & Backups', exact: true }).click();
+  await openSection(page, 'Settings & Backups', 'Settings & backups');
   await page.getByLabel('Producer display name').fill('XASMA TEST');
   await page.getByRole('button', { name: 'Save preferences' }).click();
   const downloadPromise = page.waitForEvent('download');
@@ -60,13 +61,13 @@ test('complete local release workflow, backups, mobile and offline', async ({
   const backup = await downloadPromise;
   const backupPath = await backup.path();
   expect(backupPath).toBeTruthy();
-  await page.getByRole('link', { name: 'Beat Library', exact: true }).click();
+  await openSection(page, 'Beat Library', 'Beat library');
   await page.getByLabel('Duplicate Midnight Protocol').click();
   await expect(page.getByText('Midnight Protocol (copy)', { exact: true })).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByLabel('Delete Midnight Protocol', { exact: true }).click();
   await expect(page.getByText('Midnight Protocol', { exact: true })).not.toBeVisible();
-  await page.getByRole('link', { name: 'Settings & Backups', exact: true }).click();
+  await openSection(page, 'Settings & Backups', 'Settings & backups');
   await page.getByLabel('Import backup file').setInputFiles(backupPath!);
   await expect(page.getByText('Validated backup')).toBeVisible();
   await page.getByLabel('Import mode').selectOption('replace');
@@ -79,10 +80,10 @@ test('complete local release workflow, backups, mobile and offline', async ({
     buffer: Buffer.from('{"schemaVersion":1}'),
   });
   await expect(page.getByRole('alert')).toBeVisible();
-  await page.getByRole('link', { name: 'Beat Library', exact: true }).click();
+  await openSection(page, 'Beat Library', 'Beat library');
   await expect(page.getByText('Midnight Protocol', { exact: true })).toBeVisible();
   await expect(page.getByText('Midnight Protocol (copy)', { exact: true })).not.toBeVisible();
-  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await openSection(page, 'Dashboard', 'Studio overview');
   await expect(page.getByText('Welcome back, XASMA TEST. Keep the sound moving.')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -91,7 +92,7 @@ test('complete local release workflow, backups, mobile and offline', async ({
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('link', { name: 'Beat Library', exact: true }).click();
+  await openSection(page, 'Beat Library', 'Beat library');
   await expect(page.getByText('Midnight Protocol', { exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -105,7 +106,7 @@ test('complete local release workflow, backups, mobile and offline', async ({
   await page.reload();
   await expect(page.getByText('Midnight Protocol', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await openSection(page, 'Dashboard', 'Studio overview');
   await expect(page.getByRole('heading', { name: 'Studio overview' })).toBeVisible();
   await page.getByRole('link', { name: 'New beat', exact: true }).click();
   await page.getByLabel('Beat title *').fill('Offline session');

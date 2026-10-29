@@ -30,6 +30,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          cache-on-failure: true
       - run: npm ci
       - run: npm test
       - run: npm run build
@@ -88,7 +89,24 @@ jobs:
         env:
           XASMA_TEST_FFMPEG: ${{ github.workspace }}\src-tauri\resources\media-tools\ffmpeg.exe
           XASMA_TEST_FFPROBE: ${{ github.workspace }}\src-tauri\resources\media-tools\ffprobe.exe
-      - run: npm run desktop:build -- --ci
+      - name: Package Windows NSIS installer
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = Join-Path $env:RUNNER_TEMP "xasma-package.log"
+          npm run desktop:build -- --ci 2>&1 | Tee-Object -FilePath $log
+          $xasmaExit = $LASTEXITCODE
+          if ($xasmaExit -ne 0) {
+            '### Packaging failure (bounded diagnostic output)' | Add-Content $env:GITHUB_STEP_SUMMARY
+            '```text' | Add-Content $env:GITHUB_STEP_SUMMARY
+            Get-Content $log -Tail 100 | Add-Content $env:GITHUB_STEP_SUMMARY
+            '```' | Add-Content $env:GITHUB_STEP_SUMMARY
+            $detail = (Get-Content $log -Tail 55 | Out-String)
+            if ($detail.Length -gt 10000) { $detail = $detail.Substring($detail.Length - 10000) }
+            $escaped = $detail.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error title=NSIS packaging diagnostics::$escaped"
+          }
+          exit $xasmaExit
       - name: Smoke-test silent installer and data retention
         shell: pwsh
         run: ./scripts/smoke-windows-installer.ps1

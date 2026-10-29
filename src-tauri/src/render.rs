@@ -15,6 +15,63 @@ use std::{
     time::Duration,
 };
 
+// Fixed, reviewed encoder preset; the frontend supplies no filters or arguments.
+const ARTWORK_INPUT: &[&str] = &[
+    "-hide_banner",
+    "-v",
+    "error",
+    "-nostdin",
+    "-n",
+    "-protocol_whitelist",
+    "file,pipe",
+    "-loop",
+    "1",
+    "-framerate",
+    "30",
+    "-i",
+];
+const AUDIO_INPUT: &[&str] = &["-protocol_whitelist", "file,pipe", "-i"];
+const VIDEO_FILTER:&str="scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p";
+const OUTPUT_PRESET: &[&str] = &[
+    "-map_metadata",
+    "-1",
+    "-map_metadata:s",
+    "-1",
+    "-map_chapters",
+    "-1",
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-vf",
+    VIDEO_FILTER,
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-tune",
+    "stillimage",
+    "-crf",
+    "20",
+    "-threads",
+    "2",
+    "-r",
+    "30",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-t",
+];
+const PROGRESS_OUTPUT: &[&str] = &[
+    "-shortest",
+    "-movflags",
+    "+faststart",
+    "-progress",
+    "pipe:1",
+    "-nostats",
+];
+
 pub fn validate_output(tool: &Path, path: &Path, duration: f64) -> Result<()> {
     let p = probe(tool, path)?;
     let video = p
@@ -164,15 +221,21 @@ impl Service {
             );
         }
         let duration = job.audio.duration.ok_or("Audio duration unavailable")?;
-        let _ = probe(&self.ffprobe, &audio)?;
+        let _ = crate::media::probe_with_cancel(&self.ffprobe, &audio, Some(cancel))?;
         check()?;
         self.update_job(&job.id, |j| j.state = JobState::Preparing)?;
         let tmp = self.root.join("temporary").join(format!("{}.mp4", job.id));
         let mut c = command(&self.ffmpeg);
-        c.args(["-hide_banner","-v","error","-nostdin","-n","-protocol_whitelist","file,pipe","-loop","1","-framerate","30","-i"]).arg(&artwork)
-   .args(["-protocol_whitelist","file,pipe","-i"]).arg(&audio)
-   .args(["-map","0:v:0","-map","1:a:0","-vf","scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p","-c:v","libx264","-preset","veryfast","-tune","stillimage","-crf","20","-threads","2","-r","30","-c:a","aac","-b:a","192k","-t"])
-   .arg(format!("{duration:.6}")).args(["-shortest","-movflags","+faststart","-progress","pipe:1","-nostats"]).arg(&tmp).stdout(Stdio::piped()).stderr(Stdio::piped());
+        c.args(ARTWORK_INPUT)
+            .arg(&artwork)
+            .args(AUDIO_INPUT)
+            .arg(&audio)
+            .args(OUTPUT_PRESET)
+            .arg(format!("{duration:.6}"))
+            .args(PROGRESS_OUTPUT)
+            .arg(&tmp)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         check()?;
         let mut child = c
             .spawn()
@@ -301,6 +364,8 @@ impl Service {
             {
                 return Err("Exported video checksum mismatch".into());
             }
+            drop(output);
+            drop(input);
             crate::atomic_json(&temporary.join("metadata.json"), &job.request.metadata)?;
             let m = &job.request.metadata;
             let content = format!(
@@ -311,8 +376,10 @@ impl Service {
             f.write_all(content.as_bytes())
                 .and_then(|_| f.sync_all())
                 .map_err(|e| e.to_string())?;
+            drop(f);
             crate::atomic_json(&temporary.join("manifest.json"), &job)?;
-            fs::rename(&temporary, &destination).map_err(|e| e.to_string())?;
+            fs::rename(&temporary, &destination)
+                .map_err(|e| format!("Could not promote the closed export folder: {e}"))?;
             let record = ExportRecord {
                 id: export_id,
                 job_id: job.id,

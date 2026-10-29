@@ -198,7 +198,7 @@ function Shell() {
                   removed.
                 </p>
               </div>
-            ) : ready && beats && templates ? (
+            ) : ready && beats && templates && settings ? (
               <Suspense fallback={<p role="status">Opening section…</p>}>
                 <Outlet />
               </Suspense>

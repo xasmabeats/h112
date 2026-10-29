@@ -19,6 +19,7 @@ async function native<T>(command: string, args?: Record<string, unknown>): Promi
 export const platform = {
   snapshot: () => native<NativeSnapshot>('desktop_snapshot'),
   pickMedia: (kind: 'audio' | 'artwork') => native<ManagedMedia | null>('pick_media', { kind }),
+  relinkMedia: (mediaId: string) => native<ManagedMedia | null>('relink_media', { mediaId }),
   importDrop: (token: string) => native<ManagedMedia[]>('import_drop', { token }),
   startRender: (request: RenderRequest) => native<RenderJob>('start_render', { request }),
   cancelRender: (jobId: string) => native<void>('cancel_render', { jobId }),
@@ -31,8 +32,22 @@ export const platform = {
   finishRestore: (transactionId: string) => native<void>('finish_restore', { transactionId }),
   createRecovery: (metadataJson: string) => native<string>('create_recovery', { metadataJson }),
   assetUrl: (nativePath: string) => (isDesktop() ? convertFileSrc(nativePath) : ''),
-  onDrop: async (callback: (token: string) => void) =>
-    isDesktop()
-      ? listen<{ token: string }>('desktop-drop', (event) => callback(event.payload.token))
-      : () => {},
+  onDrop: async (callback: (token: string) => void, onError?: (message: string) => void) => {
+    if (!isDesktop()) return () => {};
+    const stopDrop = await listen<{ token: string }>('desktop-drop', (event) =>
+      callback(event.payload.token),
+    );
+    try {
+      const stopError = await listen<string>('desktop-drop-error', (event) =>
+        onError?.(event.payload),
+      );
+      return () => {
+        stopDrop();
+        stopError();
+      };
+    } catch (error) {
+      stopDrop();
+      throw error;
+    }
+  },
 };

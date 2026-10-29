@@ -27,6 +27,7 @@ import {
   outdated,
   nativeMediaPath,
   nativeOutputPath,
+  event,
 } from '../../lib/releases';
 import { isDesktop, platform } from '../../platform';
 import { useNative } from '../../platform/NativeProvider';
@@ -81,14 +82,19 @@ export default function Studio() {
     let stopped = false;
     let unlisten: (() => void) | undefined;
     void platform
-      .onDrop((token) => {
-        if (stopped) return;
-        if (!beatId) {
-          setError('Select a beat before dropping files.');
-          return;
-        }
-        void action(async () => imported(await platform.importDrop(token), beatId));
-      })
+      .onDrop(
+        (token) => {
+          if (stopped) return;
+          if (!beatId) {
+            setError('Select a beat before dropping files.');
+            return;
+          }
+          void action(async () => imported(await platform.importDrop(token), beatId));
+        },
+        (message) => {
+          if (!stopped) setError(message);
+        },
+      )
       .then((unsub) => {
         if (stopped) unsub();
         else unlisten = unsub;
@@ -174,6 +180,34 @@ export default function Studio() {
         >
           {record ? 'Replace / reimport' : 'Import'} {kind}
         </button>
+        {record && (
+          <button
+            className="button wide"
+            disabled={!desktop || busy || !!snapshot?.activeJobId}
+            onClick={() =>
+              void action(async () => {
+                const restored = await platform.relinkMedia(record.id);
+                if (!restored) return;
+                await event(
+                  'media_relinked',
+                  beatId,
+                  `Restored exact managed version ${restored.originalName}`,
+                );
+                await refresh();
+                notify(
+                  'Original managed version restored; metadata and historical sources preserved',
+                );
+              })
+            }
+          >
+            Relink exact original {kind}
+          </button>
+        )}
+        {!record && kind === 'artwork' && beat?.artwork && (
+          <p className="small-text muted">
+            External reference (not imported or fetched): {beat.artwork}
+          </p>
+        )}
       </section>
     );
   }
@@ -415,6 +449,33 @@ export default function Studio() {
                           </>
                         )}
                         {job.error && <p className="error">{job.error}</p>}
+                        {[job.audio, job.artwork]
+                          .filter((source) => !nativeMediaPath(source, snapshot))
+                          .map((source) => (
+                            <button
+                              key={source.id}
+                              className="button"
+                              disabled={!desktop || busy || !!snapshot?.activeJobId}
+                              onClick={() =>
+                                void action(async () => {
+                                  const restored = await platform.relinkMedia(source.id);
+                                  if (restored) {
+                                    await event(
+                                      'media_relinked',
+                                      job.request.beatId,
+                                      `Restored historical source ${restored.originalName}`,
+                                      { releaseId: job.request.releaseId, jobId: job.id },
+                                    );
+                                    await refresh();
+                                    notify('Historical managed source restored');
+                                  }
+                                })
+                              }
+                            >
+                              Relink historical {source.kind} · {source.originalName}
+                            </button>
+                          ))}
+
                         <p className="muted small-text">
                           Source versions: {job.audio.originalName} / {job.artwork.originalName}.
                           Snapshot captured {new Date(job.createdAt).toLocaleString()}.

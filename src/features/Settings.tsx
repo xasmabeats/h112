@@ -68,6 +68,8 @@ export default function Settings() {
       return;
     setBusy(true);
     try {
+      if (isDesktop() && (await platform.snapshot()).activeJobId)
+        throw new Error('Cancel or finish the active native render before importing a backup.');
       if (isDesktop() && mode === 'replace')
         await platform.createRecovery(JSON.stringify(await exportBackup()));
       await restoreBackup(preview, mode);

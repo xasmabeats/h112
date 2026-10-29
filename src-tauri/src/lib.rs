@@ -34,6 +34,7 @@ pub fn atomic_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
     f.write_all(&data)
         .and_then(|_| f.sync_all())
         .map_err(|e| e.to_string())?;
+    drop(f); // Close the file before Windows atomically promotes its name.
     fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 pub fn checksum(path: &Path) -> Result<String> {

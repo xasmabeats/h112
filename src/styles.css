@@ -2191,3 +2191,34 @@ progress {
 .release-heading {
   flex-wrap: wrap;
 }
+.render-dock {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: min(360px, calc(100vw - 40px));
+  padding: 15px;
+  background: #1e1829;
+  border: 1px solid #65507e;
+  border-radius: 8px;
+  z-index: 60;
+  box-shadow: 0 10px 35px #0008;
+}
+.render-dock > div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.render-dock strong {
+  font-size: 11px;
+}
+.render-dock p {
+  font-size: 10px;
+  color: #bbaacf;
+  overflow-wrap: anywhere;
+}
+.render-dock .error {
+  font-size: 10px;
+  padding: 9px;
+  margin: 9px 0 0;
+}

@@ -3,7 +3,7 @@ name = "xasma-desktop"
 version = "2.0.0"
 edition = "2021"
 rust-version = "1.85"
-license = "MIT"
+publish = false
 
 [lib]
 name = "xasma_native"

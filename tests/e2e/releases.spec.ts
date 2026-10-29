@@ -63,13 +63,11 @@ test('migrates v1 JSON, retains manual metadata and prepares an offline web rele
     ],
   };
   await page.goto('./#/settings');
-  await page
-    .getByLabel('Import backup file')
-    .setInputFiles({
-      name: 'genuine-v1.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify(legacy)),
-    });
+  await page.getByLabel('Import backup file').setInputFiles({
+    name: 'genuine-v1.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(legacy)),
+  });
   await expect(page.getByText('Validated backup', { exact: true })).toBeVisible();
   await page.getByLabel('Import mode').selectOption('replace');
   page.once('dialog', (d) => d.accept());

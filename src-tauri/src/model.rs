@@ -70,6 +70,9 @@ pub struct Metadata {
 }
 impl Metadata {
     pub fn validate(&self) -> Result<()> {
+        if self.title.trim().is_empty() {
+            return Err("A metadata title is required for rendering".into());
+        }
         text(&self.title, 2000)?;
         text(&self.description, 40000)?;
         text(&self.tags, 10000)?;
@@ -89,8 +92,12 @@ pub struct RenderRequest {
 }
 impl RenderRequest {
     pub fn validate(&self) -> Result<()> {
-        valid_id(&self.beat_id)?;
-        valid_id(&self.release_id)?;
+        // These are database foreign keys, never filesystem path components.
+        text(&self.beat_id, 160)?;
+        text(&self.release_id, 160)?;
+        if self.beat_id.is_empty() || self.release_id.is_empty() {
+            return Err("Beat/release references are required".into());
+        }
         valid_id(&self.audio_id)?;
         valid_id(&self.artwork_id)?;
         self.metadata.validate()

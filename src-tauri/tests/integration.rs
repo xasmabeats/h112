@@ -22,7 +22,7 @@ fn tools() -> (PathBuf, PathBuf) {
 fn service() -> (TempDir, Arc<Service>) {
     let d = tempfile::tempdir().unwrap();
     let (a, b) = tools();
-    let s = Service::open(d.path().join("data"), a, b).unwrap();
+    let s = Service::open(d.path().join("Studio Δ 音源 space").join("data"), a, b).unwrap();
     (d, s)
 }
 fn fixture(s: &Service) -> (Media, Media) {
@@ -78,6 +78,26 @@ fn real_render_validate_export_and_portable_restore() {
     let path = s.output_path(&job.id).unwrap();
     validate_output(&s.ffprobe, &path, audio.duration.unwrap()).unwrap();
     assert!(finished.output_bytes.unwrap() > 1000);
+    let mut inspect = command(&s.ffprobe);
+    inspect
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format_tags=title",
+            "-of",
+            "json",
+        ])
+        .arg(&path);
+    let tags: serde_json::Value = serde_json::from_slice(
+        &xasma_native::media::run_bounded(inspect, Duration::from_secs(10)).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        tags["format"]["tags"]["title"].is_null(),
+        "Source tags must not leak into exported MP4 metadata"
+    );
+
     let exports = tempfile::tempdir().unwrap();
     let one = s.export_to_folder(&job.id, exports.path()).unwrap();
     let two = s.export_to_folder(&job.id, exports.path()).unwrap();
@@ -212,4 +232,61 @@ fn restart_marks_interrupted_and_keeps_immutable_media() {
             .count(),
         0
     );
+}
+
+#[test]
+fn relinks_only_exact_managed_versions_and_rejects_changed_originals() {
+    let (d, s) = service();
+    let (audio, art) = fixture(&s);
+    let original =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/synthetic-tone.mp3");
+    let managed = s.media_path(&audio.id).unwrap();
+    fs::remove_file(&managed).unwrap();
+    assert!(s.media_path(&audio.id).is_err());
+    let restored = s.relink_media(&audio.id, &original).unwrap();
+    assert_eq!(restored.id, audio.id);
+    assert_eq!(s.snapshot().unwrap().catalog.media.len(), 2);
+    assert_eq!(
+        xasma_native::checksum(&s.media_path(&audio.id).unwrap()).unwrap(),
+        audio.sha256
+    );
+    let changed = d.path().join("different.mp3");
+    let mut bytes = fs::read(&original).unwrap();
+    let middle = bytes.len() / 2;
+    bytes[middle] ^= 1;
+    fs::write(&changed, bytes).unwrap();
+    assert!(s
+        .relink_media(&audio.id, &changed)
+        .unwrap_err()
+        .contains("SHA-256"));
+    assert_eq!(
+        xasma_native::checksum(&s.media_path(&audio.id).unwrap()).unwrap(),
+        audio.sha256
+    );
+    assert!(s.media_path(&art.id).is_ok());
+}
+
+#[test]
+fn bounded_media_process_is_actually_killed_when_cancelled() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let (a, _) = tools();
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/synthetic-tone.mp3");
+    let flag = Arc::new(AtomicBool::new(false));
+    let cancel = flag.clone();
+    let setter = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        cancel.store(true, Ordering::SeqCst);
+    });
+    let mut c = command(&a);
+    c.args(["-v", "error", "-re", "-stream_loop", "60", "-i"])
+        .arg(fixture)
+        .args(["-f", "null", "-"]);
+    let began = Instant::now();
+    let error =
+        xasma_native::media::run_bounded_with_cancel(c, Duration::from_secs(5), Some(&flag))
+            .unwrap_err();
+    setter.join().unwrap();
+    assert!(error.contains("cancelled"), "{error}");
+    assert!(began.elapsed() < Duration::from_secs(3));
 }

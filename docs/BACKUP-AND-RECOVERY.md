@@ -34,7 +34,7 @@ Archive limits: 2 GB compressed/expanded, 10,002 entries (metadata + manifest + 
 
 ## Missing/corrupt state
 
-- Missing managed copy: select the beat in Release Studio and Replace/reimport its original audio/artwork. Other fields and saved metadata are preserved; old outputs stay associated with old source IDs.
+- Missing managed copy: use **Relink exact original** for a current or historical version. A native picker only restores bytes matching the recorded size/SHA-256, preserving the immutable ID and all history. For genuinely changed content, select the beat in Release Studio and Replace/reimport its original audio/artwork. Other fields and saved metadata are preserved; old outputs stay associated with old source IDs.
 - Missing generated video: its history remains; retry from the draft to create a new attempt. Portable/JSON backups do not include MP4 bytes.
 - Failed/interrupted restore: the existing database remains transactionally safe. Free disk space, restart and retry the validated archive. Extra owned copies may remain; they do not modify originals.
 - Browser/WebView storage loss: restore JSON, then portable media or originals. A native catalog alone is not a full database backup.

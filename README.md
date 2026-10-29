@@ -34,7 +34,7 @@ The actual installer artifact/run link and execution status must be confirmed in
 
 Supported audio: MP3 and common PCM WAV (16/24/32-bit signed little-endian and 32-bit float in the pinned build). Audio limit: 300 MB / 120 minutes. Artwork: PNG/JPEG, at most 20 MB, 12,000px on either side and 32 megapixels. WebP, SVG, GIF and arbitrary videos are not supported imports.
 
-Pick files or drop one audio and/or artwork onto **Release Studio** after selecting a beat. Native validation checks signatures, probe metadata and decoding, then creates managed copies. Original files remain untouched. Original filename, MIME/format, size, duration/dimensions and managed-copy identity are displayed. Replacements preserve unrelated notes/manual metadata and use new immutable IDs. Missing copies are visible and can be reimported.
+Pick files or drop one audio and/or artwork onto **Release Studio** after selecting a beat. Native validation checks signatures, probe metadata and decoding, then creates managed copies. Original files remain untouched. Original filename, MIME/format, size, duration/dimensions and managed-copy identity are displayed. Replacements preserve unrelated notes/manual metadata and use new immutable IDs. Missing copies are visible: relink the exact original by SHA-256 to repair a current or historical version, or import a replacement as a new version.
 
 Rendering uses the installer's verified FFmpeg/FFprobe, not user-installed tools: H.264 + AAC, 1920×1080, 30 FPS, fit with padding (no crop), yuv420p and fast-start MP4. Progress is read from FFmpeg; one attempt runs at a time. Cancellation stops the real process. Outputs are checked with FFprobe for streams, dimensions, pixel format, FPS and duration (`max(0.25s, 1%)` tolerance). Interrupted attempts become Interrupted on restart; retry creates a new attempt, not a resumed encode.
 
@@ -87,7 +87,7 @@ If Chromium is already available:
 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
 ```
 
-On Windows development, first build media tools in MSYS2 using `bash scripts/build-media-tools.sh`, then `npm run desktop:dev` or `npm run desktop:build`. The dedicated workflow is the supported no-local-toolchain delivery path. Production native compilation requires verified media-tool hashes; binaries, build output, source archives and local user data are excluded from Git.
+On Windows development, first build media tools in the MSYS2 UCRT64 shell using `bash scripts/build-media-tools.sh`, then `npm run desktop:dev` or `npm run desktop:build`. The dedicated workflow is the supported no-local-toolchain delivery path. Production native compilation requires verified media-tool hashes; binaries, build output, source archives and local user data are excluded from Git.
 
 Architecture: `src/features` (UI), `src/db` (Dexie v2), `src/lib` (rules/backups/providers), `src/platform` (web/native boundary), `src-tauri/src` (restricted native services). See [architecture/security](docs/DESKTOP-ARCHITECTURE.md), [FFmpeg licensing](docs/FFMPEG-LICENSING.md), and [verification boundaries](docs/WINDOWS-VERIFICATION.md).
 

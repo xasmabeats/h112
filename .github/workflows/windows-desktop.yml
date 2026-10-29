@@ -39,19 +39,19 @@ jobs:
           CI: true
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           install: >-
             make diffutils tar curl
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-nasm
-            mingw-w64-x86_64-zlib
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-zlib
       - uses: actions/cache/restore@v4
         id: media-cache
         with:
           path: src-tauri/resources/media-tools
-          key: windows-x64-media-${{ hashFiles('scripts/build-media-tools.sh', 'docs/FFMPEG-LICENSING.md') }}
+          key: windows-x64-media-${{ hashFiles('scripts/build-media-tools.sh') }}
       - name: Build checksum-pinned GPL media tools with source and notices
         if: steps.media-cache.outputs.cache-hit != 'true'
         shell: msys2 {0}
@@ -61,6 +61,9 @@ jobs:
         with:
           path: src-tauri/resources/media-tools
           key: ${{ steps.media-cache.outputs.cache-primary-key }}
+      - name: Refresh current redistribution notices
+        shell: pwsh
+        run: Copy-Item docs/FFMPEG-LICENSING.md src-tauri/resources/media-tools/NOTICE.md -Force
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Check native Windows application
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run in the MSYS2 MINGW64 shell on Windows x64. No prebuilt third-party binaries.
+# Run in the MSYS2 UCRT64 shell on Windows x64. No prebuilt third-party binaries.
 set -euo pipefail
+[[ "${MSYSTEM:-}" == "UCRT64" ]] || { echo "Use the MSYS2 UCRT64 shell" >&2; exit 1; }
 TASK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="${XASMA_MEDIA_BUILD_ROOT:-$(cygpath -u "${RUNNER_TEMP:-C:/Temp}")/xasma-media-build}"
 PREFIX="$BUILD_ROOT/prefix"
@@ -40,12 +41,13 @@ cp "$TASK_ROOT/scripts/build-media-tools.sh" "$DEST/source/"
 cp "$TASK_ROOT/docs/FFMPEG-LICENSING.md" "$DEST/NOTICE.md"
 mkdir -p "$DEST/TOOLCHAIN-LICENSES"
 for license_package in zlib mingw-w64-crt mingw-w64-headers gcc-libs gcc; do
-  if [ -d "/mingw64/share/licenses/$license_package" ]; then
-    cp -R "/mingw64/share/licenses/$license_package" "$DEST/TOOLCHAIN-LICENSES/"
+  if [ -d "${MINGW_PREFIX}/share/licenses/$license_package" ]; then
+    cp -R "${MINGW_PREFIX}/share/licenses/$license_package" "$DEST/TOOLCHAIN-LICENSES/"
   fi
 done
 test -d "$DEST/TOOLCHAIN-LICENSES/zlib"
 objdump -p ffmpeg.exe > "$DEST/DEPENDENCIES.txt"
+pacman -Q > "$DEST/TOOLCHAIN-PACKAGES.txt"
 
 cd "$DEST"
 sha256sum ffmpeg.exe ffprobe.exe source/*.tar.gz > SHA256SUMS
@@ -53,3 +55,8 @@ sha256sum ffmpeg.exe ffprobe.exe source/*.tar.gz > SHA256SUMS
 grep -q -- '--enable-gpl' BUILD-CONFIGURATION.txt
 grep -q -- '--disable-nonfree' BUILD-CONFIGURATION.txt
 if ./ffmpeg.exe -hide_banner -protocols | grep -Eq '^  (http|https|tcp|udp|tls|ftp)$'; then exit 1; fi
+
+if grep -Eiq 'nonfree parts|not legally redistributable' FFMPEG-LICENSE-OUTPUT.txt; then
+  echo 'Refusing a nonredistributable build' >&2
+  exit 1
+fi

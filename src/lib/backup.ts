@@ -448,6 +448,31 @@ export async function restoreBackup(raw: unknown, mode: 'merge' | 'replace') {
     'rw',
     [db.beats, db.templates, db.settings, db.media, db.releases, db.jobs, db.exports, db.events],
     async () => {
+      if (mode === 'merge') {
+        for (const media of b.media) {
+          const existing = await db.media.get(media.id);
+          if (existing && !mediaKeys.every((key) => existing[key] === media[key]))
+            throw new Error(
+              'Immutable media ID collision with different content; no records were merged.',
+            );
+        }
+        for (const job of b.jobs) {
+          const existing = await db.jobs.get(job.id);
+          if (
+            existing &&
+            (existing.request.beatId !== job.request.beatId ||
+              existing.request.releaseId !== job.request.releaseId ||
+              existing.request.audioId !== job.request.audioId ||
+              existing.request.artworkId !== job.request.artworkId ||
+              !metadataKeys.every(
+                (key) => existing.request.metadata[key] === job.request.metadata[key],
+              ))
+          )
+            throw new Error(
+              'Render ID collision with different source provenance; no records were merged.',
+            );
+        }
+      }
       if (mode === 'replace') {
         for (const table of [
           db.beats,

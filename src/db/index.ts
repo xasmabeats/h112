@@ -110,10 +110,14 @@ export const starters: Template[] = [
   },
 ];
 export async function initialize() {
-  await db.transaction('rw', db.settings, db.templates, async () => {
+  await db.transaction('rw', [db.settings, db.templates, db.beats, db.releases], async () => {
     if (!(await db.settings.get('preferences'))) {
+      const fresh =
+        (await db.templates.count()) === 0 &&
+        (await db.beats.count()) === 0 &&
+        (await db.releases.count()) === 0;
       await db.settings.add(defaults);
-      await db.templates.bulkAdd(starters);
+      if (fresh) await db.templates.bulkAdd(starters);
     }
   });
 }

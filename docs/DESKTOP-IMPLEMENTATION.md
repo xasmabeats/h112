@@ -28,3 +28,10 @@ Starting commit: d62c0f1eeb1b2030f3cc132c24851200d82539c7.
 - Next run adds bounded native-test diagnostics to the public job summary (preserving exit status) so the actual failure can be isolated. This is a diagnostic state change, not a blind rerun.
 - Kernel Job Objects now constrain Windows child-process lifetime, backup schemas reject unknown records, provenance collisions are checked, and web v1→v2/offline release E2E was added.
 - Cloud draft now adds api.github.com only; running network remains unchanged until user applies settings. Do not ask for a token in chat.
+
+## Confirmed Windows-specific failure and fix
+
+- Run 40958265089 / commit 635de88 exposed the actual diagnostic through a bounded public annotation. Three native tests passed, and the render/FFprobe assertions also passed before failure at the release-folder export.
+- The export failed with Access denied (Windows error 5) while promoting a folder whose video/metadata handles had been flushed but remained open. Explicitly closing all contained file handles before promotion addresses Windows rename semantics; analogous file promotions now close handles first. No assertion was weakened.
+- A locally source-built minimal FFmpeg/x264 with the same codec selection passed real conversion, cancellation, export, ZIP and recovery tests. Current native tests additionally exercise exact-version relinking, cancellable bounded processes and Unicode/space-containing managed data paths.
+- Build toolchain moves from deprecated MSYS2 MINGW64 to UCRT64; compiler/package notices and exact package versions are retained.

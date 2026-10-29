@@ -36,7 +36,14 @@ pub fn command(executable: &Path) -> Command {
     }
     c
 }
-pub fn run_bounded(mut c: Command, timeout: Duration) -> Result<Vec<u8>> {
+pub fn run_bounded(c: Command, timeout: Duration) -> Result<Vec<u8>> {
+    run_bounded_with_cancel(c, timeout, None)
+}
+pub fn run_bounded_with_cancel(
+    mut c: Command,
+    timeout: Duration,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Vec<u8>> {
     c.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = c
         .spawn()
@@ -65,6 +72,13 @@ pub fn run_bounded(mut c: Command, timeout: Duration) -> Result<Vec<u8>> {
                 return Err(e.to_string());
             }
         }
+        if cancel.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = out.join();
+            let _ = err.join();
+            return Err("Render cancelled during media probing".into());
+        }
         if started.elapsed() > timeout {
             let _ = child.kill();
             let _ = child.wait();
@@ -85,6 +99,13 @@ pub fn run_bounded(mut c: Command, timeout: Duration) -> Result<Vec<u8>> {
     Ok(output)
 }
 pub fn probe(tool: &Path, path: &Path) -> Result<Probe> {
+    probe_with_cancel(tool, path, None)
+}
+pub fn probe_with_cancel(
+    tool: &Path,
+    path: &Path,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Probe> {
     let mut c = command(tool);
     c.args([
         "-v",
@@ -97,7 +118,7 @@ pub fn probe(tool: &Path, path: &Path) -> Result<Probe> {
         "json",
     ])
     .arg(path);
-    let b = run_bounded(c, Duration::from_secs(30))?;
+    let b = run_bounded_with_cancel(c, Duration::from_secs(30), cancel)?;
     serde_json::from_slice(&b).map_err(|e| format!("Invalid probe output: {e}"))
 }
 pub fn signature(bytes: &[u8]) -> Result<(&'static str, &'static str, &'static str)> {
@@ -160,6 +181,8 @@ impl Service {
                 .flush()
                 .and_then(|_| output.sync_all())
                 .map_err(|e| e.to_string())?;
+            drop(output);
+            drop(input);
             let p = probe(&self.ffprobe, &tmp)?;
             let (duration, width, height) = if kind == "audio" {
                 let stream = p
@@ -207,10 +230,18 @@ impl Service {
                     "268435456",
                     "-protocol_whitelist",
                     "file,pipe",
+                    "-threads",
+                    "2",
                     "-i",
                 ])
                 .arg(&tmp)
-                .args(["-f", "null", "-"]);
+                .args([
+                    "-map",
+                    if kind == "audio" { "0:a:0" } else { "0:v:0" },
+                    "-f",
+                    "null",
+                    "-",
+                ]);
             run_bounded(decode, Duration::from_secs(120))?;
             let sha256 = crate::checksum(&tmp)?;
             let media = Media {
@@ -243,6 +274,51 @@ impl Service {
                 let _ = fs::remove_file(&destination);
                 return Err(e);
             }
+            Ok(media)
+        })();
+        let _ = fs::remove_file(&tmp);
+        result
+    }
+}
+
+impl Service {
+    /// Repair an immutable managed version using user-selected original bytes.
+    /// A different checksum is a replacement import, never a relink.
+    pub fn relink_media(&self, media_id: &str, source: &Path) -> Result<Media> {
+        if self.busy() {
+            return Err("Finish or cancel rendering before repairing media".into());
+        }
+        crate::model::valid_id(media_id)?;
+        ensure_regular(source)?;
+        let media = self
+            .catalog
+            .lock()
+            .map_err(|_| "Catalog lock failed")?
+            .media
+            .iter()
+            .find(|m| m.id == media_id)
+            .ok_or("Unknown managed version")?
+            .clone();
+        if fs::metadata(source).map_err(|e| e.to_string())?.len() != media.bytes {
+            return Err("This is not the original version: file size differs. Use replacement import for new content.".into());
+        }
+        let tmp = self
+            .root
+            .join("temporary")
+            .join(format!("{}.relink", crate::model::id()));
+        let result = (|| {
+            let input = File::open(source).map_err(|e| e.to_string())?;
+            let mut output = File::create(&tmp).map_err(|e| e.to_string())?;
+            let bytes = std::io::copy(&mut input.take(media.bytes + 1), &mut output)
+                .and_then(|n| output.sync_all().map(|_| n))
+                .map_err(|e| e.to_string())?;
+            if bytes != media.bytes || crate::checksum(&tmp)? != media.sha256 {
+                return Err("This file does not match the recorded SHA-256. Existing references and files were preserved.".into());
+            }
+            drop(output);
+            self.validate_staged_media(&tmp, &media)?;
+            fs::rename(&tmp, self.root.join("media").join(media.file_name()))
+                .map_err(|e| e.to_string())?;
             Ok(media)
         })();
         let _ = fs::remove_file(&tmp);

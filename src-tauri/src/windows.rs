@@ -43,6 +43,18 @@ async fn pick_media(service: State<'_, Arc<Service>>, kind: String) -> Result<Op
     .await
 }
 #[tauri::command]
+async fn relink_media(service: State<'_, Arc<Service>>, media_id: String) -> Result<Option<Media>> {
+    let service = service.inner().clone();
+    blocking(move||{
+  valid_id(&media_id)?;let media=service.catalog.lock().map_err(|_|"Catalog lock failed")?.media.iter().find(|m|m.id==media_id).ok_or("Unknown media version")?.clone();
+  let picker=rfd::FileDialog::new().set_title("Find the exact original (SHA-256 must match)");
+  let path=if media.kind=="audio"{picker.add_filter("Audio",&["mp3","wav"]).pick_file()}else{picker.add_filter("Artwork",&["png","jpg","jpeg"]).pick_file()};
+  let Some(path)=path else{return Ok(None)};
+  if rfd::MessageDialog::new().set_title("Restore managed copy?").set_description("Only a byte-for-byte SHA-256 match will restore this managed version. Original files and unrelated metadata are not changed. Continue?").set_buttons(rfd::MessageButtons::YesNo).show()!=rfd::MessageDialogResult::Yes{return Ok(None);}
+  service.relink_media(&media_id,&path).map(Some)
+ }).await
+}
+#[tauri::command]
 async fn import_drop(
     service: State<'_, Arc<Service>>,
     dropped: State<'_, Dropped>,
@@ -57,16 +69,33 @@ async fn import_drop(
         .ok_or("Drop expired; drop the files again")?;
     let service = service.inner().clone();
     blocking(move || {
-        let mut imported = Vec::new();
+        let mut selected = Vec::new();
+        let mut kinds = std::collections::HashSet::new();
         for path in paths {
             use std::io::Read;
             ensure_regular(&path)?;
-            let mut head = [0; 16];
+            let mut header = [0; 16];
             let n = File::open(&path)
                 .map_err(|e| e.to_string())?
-                .read(&mut head)
+                .read(&mut header)
                 .map_err(|e| e.to_string())?;
-            let (kind, _, _) = xasma_native::media::signature(&head[..n])?;
+            let (kind, _, _) = xasma_native::media::signature(&header[..n])?;
+            if !kinds.insert(kind) {
+                return Err("Drop at most one audio file and one artwork file".into());
+            }
+            let bytes = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+            let limit = if kind == "audio" {
+                AUDIO_LIMIT
+            } else {
+                ART_LIMIT
+            };
+            if bytes == 0 || bytes > limit {
+                return Err(format!("Dropped {kind} exceeds the supported size limit"));
+            }
+            selected.push((path, kind));
+        }
+        let mut imported = Vec::new();
+        for (path, kind) in selected {
             imported.push(service.import_media(&path, kind)?);
         }
         Ok(imported)
@@ -130,6 +159,8 @@ async fn save_video(
             let bytes = std::io::copy(&mut input, &mut output)
                 .and_then(|n| output.flush().and_then(|_| output.sync_all()).map(|_| n))
                 .map_err(|e| e.to_string())?;
+            drop(output);
+            drop(input);
             if xasma_native::checksum(&temp)? != job.output_sha256.unwrap_or_default() {
                 return Err("Output checksum mismatch; export cancelled".into());
             }
@@ -223,25 +254,88 @@ fn create_recovery(service: State<'_, Arc<Service>>, metadata_json: String) -> R
     service.recovery(&metadata_json)
 }
 
+fn setup(app: &mut tauri::App) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let resources = app.path().resource_dir()?.join("media-tools");
+    let (mut ffmpeg, mut ffprobe) = (resources.join("ffmpeg.exe"), resources.join("ffprobe.exe"));
+    let expected = [env!("XASMA_FFMPEG_SHA256"), env!("XASMA_FFPROBE_SHA256")];
+    if expected.iter().any(|pin| pin.is_empty()) {
+        ffmpeg = resources.join("unverified-tools-disabled.exe");
+        ffprobe = ffmpeg.clone();
+    } else {
+        for (path, pin) in [(&ffmpeg, expected[0]), (&ffprobe, expected[1])] {
+            if xasma_native::checksum(path).as_deref() != Ok(pin) {
+                rfd::MessageDialog::new().set_title("XASMA tool integrity error").set_description("Bundled media tools failed verification. Reinstall the verified installer. No media tools were executed.").show();
+                return Err(std::io::Error::other("Bundled tool checksum mismatch").into());
+            }
+        }
+    }
+    let service = Service::open(app.path().app_local_data_dir()?, ffmpeg, ffprobe).map_err(|error| {
+        rfd::MessageDialog::new().set_title("XASMA local data error").set_description(format!("{}\nPreserve your app data directory. See the backup/recovery documentation before making changes.", bounded(&error))).show();
+        std::io::Error::other(error)
+    })?;
+    app.manage(service);
+    app.manage(Dropped(Mutex::new(HashMap::new())));
+    Ok(())
+}
+fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
+    match event {
+        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+            if paths.is_empty() || paths.len() > 2 {
+                let _ = window.emit(
+                    "desktop-drop-error",
+                    "Drop one audio file and/or one artwork file at a time",
+                );
+                return;
+            }
+            let token = id();
+            let state = window.state::<Dropped>();
+            if let Ok(mut pending) = state.0.lock() {
+                if pending.len() >= 16 {
+                    pending.clear();
+                }
+                pending.insert(token.clone(), paths.clone());
+                let _ = window.emit(
+                    "desktop-drop",
+                    serde_json::json!({"token":token,"count":paths.len()}),
+                );
+            };
+        }
+        tauri::WindowEvent::CloseRequested { api, .. } => {
+            let service = window.state::<Arc<Service>>();
+            if service.busy() {
+                let decision = rfd::MessageDialog::new().set_title("Render in progress").set_description("Closing stops the active render and removes its partial output. Close and cancel?").set_buttons(rfd::MessageButtons::YesNo).show();
+                if decision != rfd::MessageDialogResult::Yes {
+                    api.prevent_close();
+                    return;
+                }
+                service.shutdown();
+            }
+        }
+        _ => {}
+    }
+}
 pub fn run() {
-    let app=tauri::Builder::default().setup(|app|{
-  let resources=app.path().resource_dir()?.join("media-tools");
-  let (mut ffmpeg,mut ffprobe)=(resources.join("ffmpeg.exe"),resources.join("ffprobe.exe"));
-  let expected=[env!("XASMA_FFMPEG_SHA256"),env!("XASMA_FFPROBE_SHA256")];
-  if expected.iter().any(|pin|pin.is_empty()) {ffmpeg=resources.join("unverified-tools-disabled.exe");ffprobe=ffmpeg.clone();}
-  else {for (path,pin) in [(&ffmpeg,expected[0]),(&ffprobe,expected[1])] {if xasma_native::checksum(path).as_deref()!=Ok(pin) {rfd::MessageDialog::new().set_title("XASMA tool integrity error").set_description("Bundled media tools failed verification. Reinstall the verified installer. No media tools were executed.").show();return Err(std::io::Error::other("Bundled tool checksum mismatch").into());}}}
-  let service=Service::open(app.path().app_local_data_dir()?,ffmpeg,ffprobe).map_err(std::io::Error::other)?;
-  app.manage(service);app.manage(Dropped(Mutex::new(HashMap::new())));Ok(())
- }).on_window_event(|window,event|{
-  match event {
-   tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop{paths,..})=>{
-    if paths.is_empty()||paths.len()>2 {let _=window.emit("desktop-drop-error","Drop one audio file and/or one artwork file at a time");return;}
-    let token=id();let state=window.state::<Dropped>();if let Ok(mut pending)=state.0.lock(){if pending.len()>=16{pending.clear();}pending.insert(token.clone(),paths.clone());let _=window.emit("desktop-drop",serde_json::json!({"token":token,"count":paths.len()}));};
-   },
-   tauri::WindowEvent::CloseRequested{api,..}=>{let service=window.state::<Arc<Service>>();if service.busy(){let decision=rfd::MessageDialog::new().set_title("Render in progress").set_description("Closing stops the active render and removes its partial output. Close and cancel?").set_buttons(rfd::MessageButtons::YesNo).show();if decision!=rfd::MessageDialogResult::Yes {api.prevent_close();return;}service.shutdown();}},
-   _=>{}
-  }
- }).invoke_handler(tauri::generate_handler![desktop_snapshot,pick_media,import_drop,start_render,cancel_render,export_release,save_video,open_output_folder,portable_backup,prepare_restore,promote_restore,finish_restore,create_recovery]).build(tauri::generate_context!()).expect("Failed to initialize XASMA desktop");
+    let app = tauri::Builder::default()
+        .setup(setup)
+        .on_window_event(on_window_event)
+        .invoke_handler(tauri::generate_handler![
+            desktop_snapshot,
+            pick_media,
+            relink_media,
+            import_drop,
+            start_render,
+            cancel_render,
+            export_release,
+            save_video,
+            open_output_folder,
+            portable_backup,
+            prepare_restore,
+            promote_restore,
+            finish_restore,
+            create_recovery
+        ])
+        .build(tauri::generate_context!())
+        .expect("Failed to initialize XASMA desktop");
     app.run(|handle, event| {
         if matches!(event, tauri::RunEvent::Exit) {
             handle.state::<Arc<Service>>().shutdown();

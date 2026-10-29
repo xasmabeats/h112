@@ -30,6 +30,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "desktop_snapshot",
             "pick_media",
+            "relink_media",
             "import_drop",
             "start_render",
             "cancel_render",

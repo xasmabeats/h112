@@ -3,6 +3,7 @@ import type { NativeSnapshot } from '../types/desktop';
 import { isDesktop, platform } from './index';
 import { syncNative } from '../lib/releases';
 import { errorText } from '../components/ui';
+import { RenderDock } from './RenderDock';
 const NativeContext = createContext<{
   snapshot: NativeSnapshot | null;
   error: string;
@@ -15,8 +16,8 @@ export function NativeProvider({ children }: { children: ReactNode }) {
   async function refresh() {
     if (!isDesktop()) return;
     const next = await platform.snapshot();
-    await syncNative(next);
     setSnapshot(next);
+    await syncNative(next);
     setError('');
   }
   useEffect(() => {
@@ -27,9 +28,9 @@ export function NativeProvider({ children }: { children: ReactNode }) {
       try {
         const next = await platform.snapshot();
         if (stopped) return;
+        setSnapshot(next);
         await syncNative(next);
         if (!stopped) {
-          setSnapshot(next);
           setError('');
         }
       } catch (e) {
@@ -44,6 +45,11 @@ export function NativeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
   return (
-    <NativeContext.Provider value={{ snapshot, error, refresh }}>{children}</NativeContext.Provider>
+    <NativeContext.Provider value={{ snapshot, error, refresh }}>
+      {children}
+      {snapshot?.activeJobId && (
+        <RenderDock key={snapshot.activeJobId} snapshot={snapshot} historyError={error} />
+      )}
+    </NativeContext.Provider>
   );
 }

@@ -62,13 +62,11 @@ async function prepared() {
 it('upgrades a genuine v1 database without modifying beats, templates, dates or metadata', async () => {
   const name = 'xasma-migration-' + crypto.randomUUID();
   const old = new Dexie(name);
-  old
-    .version(1)
-    .stores({
-      beats: 'id,title,genre,status,plannedDate,updatedAt,*tags',
-      templates: 'id,kind',
-      settings: 'id',
-    });
+  old.version(1).stores({
+    beats: 'id,title,genre,status,plannedDate,updatedAt,*tags',
+    templates: 'id,kind',
+    settings: 'id',
+  });
   await old.open();
   const beat = {
     ...newBeat(),
@@ -255,4 +253,59 @@ it('uses a complete template provider and reports future network publishing as u
   expect(
     await manualPublisher.publish(generate(newBeat(), defaults, starters), () => {}),
   ).toMatchObject({ supported: false, error: { code: 'UNSUPPORTED' } });
+});
+
+it('rejects future/credential fields and false native source provenance without discarding records', async () => {
+  const { audio, art, release, beat } = await prepared();
+  const backup = await exportBackup();
+  expect(() => validateBackup({ ...backup, futureRecords: [] })).toThrow('Unsupported');
+  expect(() =>
+    validateBackup({
+      ...backup,
+      settings: [{ ...backup.settings[0], apiKey: 'not-a-real-secret' }],
+    }),
+  ).toThrow('credentials');
+  const snapshot: NativeSnapshot = {
+    catalog: { media: [audio, art], jobs: [], exports: [] },
+    mediaUrls: { [audio.id]: 'approved-audio' },
+    outputUrls: {},
+    activeJobId: null,
+    toolsReady: true,
+  };
+  const { nativeMediaPath } = await import('../src/lib/releases');
+  expect(nativeMediaPath(audio, snapshot)).toBe('approved-audio');
+  expect(nativeMediaPath({ ...audio, sha256: 'c'.repeat(64) }, snapshot)).toBeUndefined();
+});
+
+it('rejects immutable media collisions before merging new records', async () => {
+  await prepared();
+  const b = await exportBackup();
+  const original = await db.media.toArray();
+  const conflicting = {
+    ...b,
+    media: b.media.map((m, i) => (i === 0 ? { ...m, sha256: 'd'.repeat(64) } : m)),
+  };
+  await expect(restoreBackup(conflicting, 'merge')).rejects.toThrow('Immutable media ID collision');
+  expect(await db.media.toArray()).toEqual(original);
+  expect(await db.beats.count()).toBe(1);
+});
+it('repairs missing preferences without overwriting existing templates or reseeding deleted defaults', async () => {
+  const beat = { ...newBeat(), title: 'Retained' };
+  await saveBeat(beat);
+  await db.templates.clear();
+  await db.templates.add({
+    id: 'custom',
+    kind: 'title',
+    name: 'User pattern',
+    content: '{beatTitle}',
+    isDefault: true,
+  });
+  await db.settings.delete('preferences');
+  await initialize();
+  expect((await db.templates.toArray()).map((t) => t.id)).toEqual(['custom']);
+  await db.templates.clear();
+  await db.settings.delete('preferences');
+  await initialize();
+  expect(await db.templates.count()).toBe(0);
+  expect((await db.beats.get(beat.id))?.title).toBe('Retained');
 });

@@ -286,6 +286,8 @@ impl Service {
                 std::io::copy(&mut input, &mut output)
                     .and_then(|_| output.sync_all())
                     .map_err(|e| e.to_string())?;
+                drop(output);
+                drop(input);
                 fs::rename(&partial, destination).map_err(|e| e.to_string())?;
             }
             if !next.media.iter().any(|v| v.id == m.id) {
@@ -318,7 +320,7 @@ impl Service {
             .map_err(|e| e.to_string())?;
         Ok(name)
     }
-    fn validate_staged_media(&self, path: &Path, m: &Media) -> Result<()> {
+    pub(crate) fn validate_staged_media(&self, path: &Path, m: &Media) -> Result<()> {
         let mut f = File::open(path).map_err(|e| e.to_string())?;
         let mut header = [0; 16];
         let n = f.read(&mut header).map_err(|e| e.to_string())?;

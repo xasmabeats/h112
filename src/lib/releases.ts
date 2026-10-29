@@ -1,4 +1,5 @@
 import { db } from '../db';
+import { defaultRenderSettings } from '../types/desktop';
 import type { Beat, Metadata } from '../types';
 import type {
   ExportRecord,
@@ -53,6 +54,11 @@ export function nativeOutputPath(job: RenderJob, snapshot: NativeSnapshot | null
     !sameRequest(job.request, local.request) ||
     !sameMedia(job.audio, local.audio) ||
     !sameMedia(job.artwork, local.artwork) ||
+    !(Object.keys(defaultRenderSettings) as (keyof typeof defaultRenderSettings)[]).every(
+      (key) =>
+        (job.settings ?? defaultRenderSettings)[key] ===
+        (local.settings ?? defaultRenderSettings)[key],
+    ) ||
     job.outputSha256 !== local.outputSha256
   )
     return undefined;
@@ -227,7 +233,7 @@ export async function syncNative(snapshot: NativeSnapshot) {
         )
           continue;
         const previous = await db.jobs.get(job.id);
-        if (previous?.updatedAt === job.updatedAt) continue;
+        if (previous?.updatedAt === job.updatedAt && previous.settings) continue;
         await db.jobs.put(job);
         if (previous?.state !== job.state)
           await event(

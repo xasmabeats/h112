@@ -89,6 +89,9 @@ jobs:
           XASMA_TEST_FFMPEG: ${{ github.workspace }}\src-tauri\resources\media-tools\ffmpeg.exe
           XASMA_TEST_FFPROBE: ${{ github.workspace }}\src-tauri\resources\media-tools\ffprobe.exe
       - run: npm run desktop:build -- --ci
+      - name: Smoke-test silent installer and data retention
+        shell: pwsh
+        run: ./scripts/smoke-windows-installer.ps1
       - name: Prepare installer provenance and checksum
         shell: pwsh
         run: |
@@ -101,7 +104,7 @@ jobs:
           Copy-Item $installers[0].FullName "$out/$name"
           $hash = (Get-FileHash "$out/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $name" | Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
-          "Commit: $env:GITHUB_SHA`nVersion: $version`nArchitecture: x64`nUnsigned NSIS installer; not runtime/GUI tested." | Set-Content "$out/BUILD-INFO.txt"
+          "Commit: $env:GITHUB_SHA`nVersion: $version`nArchitecture: x64`nUnsigned NSIS installer. Silent install/uninstall smoke passed; interactive GUI/runtime remains unverified." | Set-Content "$out/BUILD-INFO.txt"
           "## XASMA installer`nCommit: $env:GITHUB_SHA`nArtifact: $name`nSHA-256: $hash" | Add-Content $env:GITHUB_STEP_SUMMARY
           Copy-Item docs/FFMPEG-LICENSING.md "$out/"
           Copy-Item src-tauri/resources/media-tools/BUILD-CONFIGURATION.txt "$out/"

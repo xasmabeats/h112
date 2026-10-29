@@ -16,6 +16,7 @@ import { generate } from '../src/lib/metadata';
 import { defaults, starters } from '../src/db';
 import { manualPublisher, templateProvider } from '../src/lib/providers';
 import type { ManagedMedia, RenderJob, NativeSnapshot } from '../src/types/desktop';
+import { defaultRenderSettings } from '../src/types/desktop';
 beforeEach(async () => {
   await db.transaction('rw', db.tables, async () => {
     for (const t of db.tables) await t.clear();
@@ -122,6 +123,31 @@ it('accepts v1 JSON and round trips v2 release/media/history data', async () => 
   const backup = validateBackup(await exportBackup());
   expect(backup.schemaVersion).toBe(2);
   expect(backup.attachments).toBe('references-only');
+  const explicit = { ...job, settings: defaultRenderSettings };
+  expect(validateBackup({ ...backup, jobs: [explicit] }).jobs[0].settings).toEqual(
+    defaultRenderSettings,
+  );
+  expect(() =>
+    validateBackup({
+      ...backup,
+      jobs: [{ ...explicit, settings: { ...defaultRenderSettings, fps: 60 } }],
+    }),
+  ).toThrow();
+  const { nativeOutputPath } = await import('../src/lib/releases');
+  const native: NativeSnapshot = {
+    catalog: { media: [audio, art], jobs: [explicit], exports: [] },
+    mediaUrls: {},
+    outputUrls: { [job.id]: 'approved-output' },
+    activeJobId: null,
+    toolsReady: true,
+  };
+  expect(nativeOutputPath(job, native)).toBe('approved-output');
+  expect(
+    nativeOutputPath(
+      { ...explicit, settings: { ...defaultRenderSettings, fps: 60 } } as unknown as RenderJob,
+      native,
+    ),
+  ).toBeUndefined();
   await restoreBackup(backup, 'replace');
   expect(await exportBackup()).toMatchObject({
     beats: [beat],

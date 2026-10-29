@@ -122,11 +122,43 @@ impl JobState {
         )
     }
 }
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenderSettings {
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub video_codec: String,
+    pub audio_codec: String,
+    pub pixel_format: String,
+    pub fit: String,
+    pub preset: String,
+    pub crf: u32,
+    pub audio_bitrate: u32,
+}
+impl Default for RenderSettings {
+    fn default() -> Self {
+        Self {
+            width: 1920,
+            height: 1080,
+            fps: 30,
+            video_codec: "h264".into(),
+            audio_codec: "aac".into(),
+            pixel_format: "yuv420p".into(),
+            fit: "contain-pad".into(),
+            preset: "1080p30-v1".into(),
+            crf: 20,
+            audio_bitrate: 192000,
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Job {
     pub id: String,
     pub attempt: u32,
+    #[serde(default)]
+    pub settings: RenderSettings,
     pub request: RenderRequest,
     pub audio: Media,
     pub artwork: Media,

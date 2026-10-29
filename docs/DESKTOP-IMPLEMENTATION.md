@@ -9,8 +9,10 @@ Starting commit: d62c0f1eeb1b2030f3cc132c24851200d82539c7.
 - [x] Additive Tauri 2 build, restricted native boundary and Windows MSVC-target cargo check passed (cross-check only, not an executable or GUI run).
 - [x] Managed imports, native asset playback UI and immutable media provenance implemented. Native GUI playback remains unverified.
 - [x] Real native rendering/validation/cancellation/export/restart recovery verified with Linux FFmpeg; Windows source-built tools still need CI.
-- [x] Release records/events, non-destructive v1→v2 migration, v1/v2 JSON and staged portable backups implemented. 26 JS tests and 4 real native integration tests pass.
-- [ ] Regression verification, Windows CI installer, licensing, PR.
+- [x] Release records/events, non-destructive v1→v2 migration, v1/v2 JSON and staged portable backups implemented. 32 JS tests and 6 real native integration tests pass.
+- [x] Web/desktop frontend regression builds, 32 JS tests and 6 CI-like Chromium E2E tests.
+- [x] Pinned media-source integrity and redistribution documentation/resources.
+- [ ] Final Windows CI installer/silent smoke, interactive runtime checks, PR API access.
 
 ## Decisions and infrastructure
 
@@ -35,3 +37,12 @@ Starting commit: d62c0f1eeb1b2030f3cc132c24851200d82539c7.
 - The export failed with Access denied (Windows error 5) while promoting a folder whose video/metadata handles had been flushed but remained open. Explicitly closing all contained file handles before promotion addresses Windows rename semantics; analogous file promotions now close handles first. No assertion was weakened.
 - A locally source-built minimal FFmpeg/x264 with the same codec selection passed real conversion, cancellation, export, ZIP and recovery tests. Current native tests additionally exercise exact-version relinking, cancellable bounded processes and Unicode/space-containing managed data paths.
 - Build toolchain moves from deprecated MSYS2 MINGW64 to UCRT64; compiler/package notices and exact package versions are retained.
+
+## Final verification milestone in progress
+
+- Explicit immutable 1080p30 render-settings snapshots are persisted per job, included in backups, checked for native-output provenance, and displayed per attempt. Earlier v2 development records use the documented identical fixed preset.
+- Added actual silent NSIS install/uninstall smoke verification in a uniquely owned runner directory, including x64 payload, bundled tool hashes, required source/license resources, and a synthetic application-data retention marker. It refuses to touch any existing profile. No GUI launch is claimed.
+- Local current-source checks: 32 JS tests, 6 real native integration tests using the source-built minimal FFmpeg/x264 codec set, Rust formatting and Windows-target cargo check passed. Both production frontend builds passed.
+- Initial unconfigured Playwright launch failed because its default downloaded browser was absent after environment restart. The configured system-Chromium run (`CI=true PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e`) passed all 6 tests in 17.6 seconds; no application assertion was weakened.
+- Source scan found no real credentials; its sole match is the deliberate `not-a-real-secret` validation fixture. Generated build products, tool binaries/sources, backups and machine configuration remain ignored. Only synthetic audio/artwork fixtures are tracked.
+- Run 40962692129 (aea7c7b) contains the Windows file-handle fix and UCRT64 source build; status must be inspected before claiming package success. A later final-source run must include the new settings/silent smoke checks before it is accepted as the final artifact.

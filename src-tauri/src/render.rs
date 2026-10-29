@@ -151,6 +151,7 @@ impl Service {
         let job = Job {
             id: id(),
             attempt,
+            settings: RenderSettings::default(),
             request,
             audio,
             artwork,

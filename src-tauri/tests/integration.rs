@@ -77,6 +77,7 @@ fn real_render_validate_export_and_portable_restore() {
     assert_eq!(finished.state, JobState::Completed, "{:?}", finished.error);
     let path = s.output_path(&job.id).unwrap();
     validate_output(&s.ffprobe, &path, audio.duration.unwrap()).unwrap();
+    assert_eq!(finished.settings, RenderSettings::default());
     assert!(finished.output_bytes.unwrap() > 1000);
     let mut inspect = command(&s.ffprobe);
     inspect
@@ -205,6 +206,7 @@ fn restart_marks_interrupted_and_keeps_immutable_media() {
     let job = Job {
         id: id(),
         attempt: 1,
+        settings: RenderSettings::default(),
         request: request(&audio, &art),
         audio: audio.clone(),
         artwork: art,

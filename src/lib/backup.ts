@@ -5,7 +5,7 @@ import type {
   ExportRecord,
   HistoryEvent,
 } from '../types/desktop';
-import { jobStates } from '../types/desktop';
+import { jobStates, defaultRenderSettings } from '../types/desktop';
 import { db } from '../db';
 import { statuses, templateKinds, type Beat, type Settings, type Template } from '../types';
 interface LegacyBackup {
@@ -345,6 +345,7 @@ export function validateBackup(raw: unknown): Backup {
       !hasOnlyKeys(job, [
         'id',
         'attempt',
+        'settings',
         'request',
         'audio',
         'artwork',
@@ -356,6 +357,11 @@ export function validateBackup(raw: unknown): Backup {
         'outputBytes',
         'outputSha256',
       ]) ||
+      (job.settings !== undefined &&
+        (!hasOnlyKeys(job.settings, Object.keys(defaultRenderSettings)) ||
+          !(Object.keys(defaultRenderSettings) as (keyof typeof defaultRenderSettings)[]).every(
+            (key) => job.settings?.[key] === defaultRenderSettings[key],
+          ))) ||
       !object(job.request) ||
       !hasOnlyKeys(job.request, ['beatId', 'releaseId', 'audioId', 'artworkId', 'metadata']) ||
       !reference(job.request.beatId, beatIds) ||

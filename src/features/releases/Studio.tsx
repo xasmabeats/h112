@@ -32,6 +32,7 @@ import {
 import { isDesktop, platform } from '../../platform';
 import { useNative } from '../../platform/NativeProvider';
 import type { ManagedMedia, RenderJob } from '../../types/desktop';
+import { defaultRenderSettings } from '../../types/desktop';
 export default function Studio() {
   const { beats, templates, settings, notify } = useData();
   const { snapshot, error: nativeError, refresh } = useNative();
@@ -419,6 +420,7 @@ export default function Studio() {
                 {attempts.length ? (
                   attempts.map((job) => {
                     const available = nativeOutputPath(job, snapshot);
+                    const preset = job.settings ?? defaultRenderSettings;
                     return (
                       <article className="panel form-panel" key={job.id}>
                         <div className="release-heading">
@@ -449,6 +451,11 @@ export default function Studio() {
                           </>
                         )}
                         {job.error && <p className="error">{job.error}</p>}
+                        <p className="muted small-text">
+                          Settings snapshot: {preset.width}×{preset.height} · {preset.fps} FPS ·{' '}
+                          {preset.videoCodec}/{preset.audioCodec} · {preset.pixelFormat} ·{' '}
+                          {preset.fit} · {preset.preset}
+                        </p>
                         {[job.audio, job.artwork]
                           .filter((source) => !nativeMediaPath(source, snapshot))
                           .map((source) => (

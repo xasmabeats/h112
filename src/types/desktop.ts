@@ -32,9 +32,34 @@ export const jobStates = [
   'Interrupted',
 ] as const;
 export type JobState = (typeof jobStates)[number];
+export interface RenderSettings {
+  width: 1920;
+  height: 1080;
+  fps: 30;
+  videoCodec: 'h264';
+  audioCodec: 'aac';
+  pixelFormat: 'yuv420p';
+  fit: 'contain-pad';
+  preset: '1080p30-v1';
+  crf: 20;
+  audioBitrate: 192000;
+}
+export const defaultRenderSettings: RenderSettings = {
+  width: 1920,
+  height: 1080,
+  fps: 30,
+  videoCodec: 'h264',
+  audioCodec: 'aac',
+  pixelFormat: 'yuv420p',
+  fit: 'contain-pad',
+  preset: '1080p30-v1',
+  crf: 20,
+  audioBitrate: 192000,
+};
 export interface RenderJob {
   id: string;
   attempt: number;
+  settings?: RenderSettings;
   request: RenderRequest;
   audio: ManagedMedia;
   artwork: ManagedMedia;

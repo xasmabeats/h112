@@ -65,7 +65,23 @@ jobs:
       - name: Check native Windows application
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
       - name: Real conversion, process cancellation, archive and recovery tests
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc -- --test-threads=1
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = Join-Path $env:RUNNER_TEMP "xasma-native-tests.log"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc -- --test-threads=1 2>&1 | Tee-Object -FilePath $log
+          $xasmaExit = $LASTEXITCODE
+          if ($xasmaExit -ne 0) {
+            '### Native verification failure (bounded diagnostic output)' | Add-Content $env:GITHUB_STEP_SUMMARY
+            '```text' | Add-Content $env:GITHUB_STEP_SUMMARY
+            Get-Content $log -Tail 180 | Add-Content $env:GITHUB_STEP_SUMMARY
+            '```' | Add-Content $env:GITHUB_STEP_SUMMARY
+            $detail = (Get-Content $log -Tail 45 | Out-String)
+            if ($detail.Length -gt 8000) { $detail = $detail.Substring($detail.Length - 8000) }
+            $escaped = $detail.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error title=Native integration diagnostics::$escaped"
+          }
+          exit $xasmaExit
         env:
           XASMA_TEST_FFMPEG: ${{ github.workspace }}\src-tauri\resources\media-tools\ffmpeg.exe
           XASMA_TEST_FFPROBE: ${{ github.workspace }}\src-tauri\resources\media-tools\ffprobe.exe

@@ -69,10 +69,15 @@ export default function Library() {
     }
   }
   async function remove(beat: Beat) {
-    if (!confirm(`Delete “${beat.title}”? This cannot be undone.`)) return;
+    if (
+      !confirm(
+        `Remove “${beat.title}” from the active library? Release history and managed copies are retained for provenance and backup recovery.`,
+      )
+    )
+      return;
     try {
       await removeBeat(beat.id);
-      notify('Beat deleted');
+      notify('Removed from active library');
     } catch (e) {
       setError(errorText(e));
     }

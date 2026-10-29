@@ -177,6 +177,8 @@ test('all primary sections fit a narrow mobile viewport', async ({ page }) => {
     'metadata',
     'templates',
     'settings',
+    'studio',
+    'history',
   ]) {
     await page.goto(`./#/${route}`);
     await expect(page.locator('main h1')).toBeVisible();

@@ -1,119 +1,113 @@
-# XASMA Beat Release Manager
+# XASMA Beat Release Manager v2
 
-A private, local-first command center for independent Drill, Dark Trap, and Supertrap producers. Manage a catalog, plan releases, and prepare YouTube metadata without a backend, login, API key, AI API, or subscription.
+A free, private, local-first music production command center for Drill, Dark Trap and Supertrap. The original React web/PWA application remains available; an additive **Windows 10/11 x64 Tauri 2 desktop target** adds managed media, native MP4 rendering and portable backups. No server, account, API key, cloud database, telemetry, subscription or YouTube OAuth is required to run the app.
 
-## Features
+Desktop implementation and automated verification are separate from a verified installer/real Windows GUI session. Consult [verification](docs/WINDOWS-VERIFICATION.md) and the [implementation journal](docs/DESKTOP-IMPLEMENTATION.md) for actual results and outstanding checks. Do not treat an unverified build as production-ready.
 
-- Dashboard calculated from your actual catalog: totals, upcoming releases, recently edited beats, and workflow counts.
-- Beat library with create, edit, duplicate, confirmed delete, search, genre/status/tag filters, and title/BPM/date/status sorting. Custom genres are welcome.
-- Beat editor for musical details, artist references, notes, tags, artwork references, video URLs, and release dates. Unsaved beat edits trigger navigation warnings.
-- Accessible workflow board: Idea → Producing → Mixing → Mastering → Ready → Scheduled → Published. Stage controls work with keyboard and touch. Publishing requires explicit confirmation; dates never publish automatically.
-- Monthly release calendar, date selection, assignment, rescheduling, status filters, upcoming list, and all-day `.ics` export. Date-only values follow your local calendar.
-- Deterministic metadata generation: title patterns, descriptions, tags, hashtags, filenames, and pinned comments. Editable output, counters, copy buttons, saved metadata, live template preview, and regeneration confirmation.
-- Local template CRUD, duplication, defaults by type, previews, starter templates for three genres, and licensing disclaimer templates. Use a licensing template in Settings to apply it to generated descriptions.
-- Persistent preferences for producer name, contact details, social links, licensing, default genre/title pattern, preferred schedule note, and layout density.
-- Versioned JSON backups with validation, preview, atomic restore, merge/replace modes, and duplicate-ID handling.
-- Installable PWA with offline app shell, local assets, update prompt, iPhone home-screen icon, and safe-area support. No external fonts, analytics, or third-party content requests.
+## Main workflows
 
-## Stack and architecture
+- Dashboard calculated from real records; searchable/filterable/sortable beat library; create/edit/duplicate/remove; notes, tags, genres, artist references and dates.
+- Production pipeline: Idea → Producing → Mixing → Mastering → Ready → Scheduled → Published. Calendar scheduling uses local YYYY-MM-DD dates and never automatically publishes.
+- Local template-based metadata: title, description, tags, hashtags, filename and pinned comment. Editable results, exact accessible labels, counters, title suggestions and selected-field regeneration protect manual edits. Templates and licensing terms remain user-controlled; no artist affiliation/rights or SEO outcome is invented.
+- Release Studio: select beat → import audio/artwork → save/review metadata → create/refresh draft snapshot → mark Ready → render → review → export MP4 + JSON/text/manifest → optionally report manual publication.
+- Persistent release history, independent preparation/render/export/publication facts and immutable source/render provenance. A changed source marks old outputs outdated without deleting their history.
+- Preferences, storage information, metadata JSON backups and desktop portable media archives.
+- Dark responsive UI, keyboard/focus support, reduced motion, iPhone safe areas, offline web shell and desktop-bundled assets.
 
-React 19, strict TypeScript, Vite, Tailwind CSS 4 plus a custom design system, React Router hash routing, Dexie/IndexedDB, Lucide icons, vite-plugin-pwa/Workbox, Vitest, React Testing Library, and Playwright. The app operates entirely in your browser.
+## Install on Windows — no local development toolchain
 
-```
-src/app/          Router, shell, reactive data context
-src/components/   Shared accessible controls and UI
-src/db/           IndexedDB v1 schema, initialization, mutations
-src/features/     Dashboard, library/editor, calendar, pipeline,
-                  metadata, templates, settings/backups
-src/lib/          Pure metadata generation, backup validation, ICS
-src/types/        Domain types and workflow definitions
-```
+1. Open the **Windows desktop installer (free public runners)** run for the desired feature-branch commit in the repository's Actions tab. Use only a successful run for that exact SHA.
+2. Download its `XASMA-2.0.0-windows-x64-<sha>` artifact while retained (14 days). GitHub normally requires signing in to download workflow artifacts, even for a public repository. This is a download-platform requirement; the installed app has no login.
+3. Extract the artifact. Compare `SHA256SUMS.txt` with:
 
-Dexie schema version 1 is declared explicitly. Future schema changes must add a new version with a non-destructive migration. Service worker updates do not clear IndexedDB.
+   ```powershell
+   Get-FileHash .\XASMA-2.0.0-windows-x64-setup.exe -Algorithm SHA256
+   ```
 
-## Local installation
+4. Run the unsigned NSIS installer. It targets your user account, without unnecessary system-wide elevation. Windows may show an unsigned/unknown-publisher warning; verify the repository, commit and checksum before proceeding. No signing certificate purchase is required.
+5. If WebView2 is absent, the installer checks/downloads Microsoft's bootstrapper. **Internet is required for that first runtime installation**. Managed-PC runtime policies may require administrator assistance. Once WebView2 and the app are installed, core work is offline.
+6. Launch **XASMA Beat Release Manager**. Import a browser backup in Settings if needed. The user does not need Node, Rust, Visual Studio or a separate FFmpeg install.
 
-Use Node.js 22.12+ (Node 24 also works) and npm. No environment variables or secrets are required.
+The actual installer artifact/run link and execution status must be confirmed in the current verification report; this README does not assert a package exists merely because a workflow is configured. No public GitHub Release or website deployment is performed by the desktop workflow. Uninstall through Windows Apps; back up first and do not select removal of app data if such an option is offered. Uninstall/data-retention behavior still requires a real Windows smoke test.
+
+## Managed media and outputs
+
+Supported audio: MP3 and common PCM WAV (16/24/32-bit signed little-endian and 32-bit float in the pinned build). Audio limit: 300 MB / 120 minutes. Artwork: PNG/JPEG, at most 20 MB, 12,000px on either side and 32 megapixels. WebP, SVG, GIF and arbitrary videos are not supported imports.
+
+Pick files or drop one audio and/or artwork onto **Release Studio** after selecting a beat. Native validation checks signatures, probe metadata and decoding, then creates managed copies. Original files remain untouched. Original filename, MIME/format, size, duration/dimensions and managed-copy identity are displayed. Replacements preserve unrelated notes/manual metadata and use new immutable IDs. Missing copies are visible and can be reimported.
+
+Rendering uses the installer's verified FFmpeg/FFprobe, not user-installed tools: H.264 + AAC, 1920×1080, 30 FPS, fit with padding (no crop), yuv420p and fast-start MP4. Progress is read from FFmpeg; one attempt runs at a time. Cancellation stops the real process. Outputs are checked with FFprobe for streams, dimensions, pixel format, FPS and duration (`max(0.25s, 1%)` tolerance). Interrupted attempts become Interrupted on restart; retry creates a new attempt, not a resumed encode.
+
+Completed MP4s can be previewed, saved as a video, or exported with their metadata snapshot as a collision-safe release folder. A cancelled picker is not a successful export. Playback depends on the Windows/WebView2 media stack (N/KN editions may need Windows media components); actual GUI playback needs device verification.
+
+Native data normally lives under `%LOCALAPPDATA%\io.xasmabeats.release-manager`:
+
+- `media/`: immutable imported copies, indexed by `catalog.json`.
+- `outputs/`: validated MP4s by job ID.
+- `temporary/`: owned partial imports/renders, cleaned after interruption.
+- `restores/`: staged portable restore, never a committed database reference.
+- `recovery/`: metadata snapshots made before destructive desktop replacement.
+
+Do not remove/move this directory to troubleshoot. Removing a beat hides it from the active library but retains history/source references for provenance and backups. Managed source versions and completed outputs are not automatically purged.
+
+## Data migration, backups and privacy
+
+Browser-origin data does not automatically appear in Tauri. On the old web app, export JSON; on desktop, choose **Settings & Backups → Choose backup to import**. Genuine schema-v1 backups remain supported. Dexie v1→v2 migration adds tables without resetting existing beats, templates, manual metadata, production statuses or dates.
+
+- **v2 JSON** is metadata-only: catalog, media descriptors, release/render/export/history records and preferences. **No audio, artwork or MP4 bytes are included.** Both v2 web and desktop can import it; the old v1 app cannot.
+- **Portable desktop ZIP** contains v2 database metadata and every listed managed audio/artwork file, with checksums. Generated MP4 bytes are explicitly excluded. A missing/changed file aborts the backup. ZIP restoration requires desktop.
+- Merge adds unknown IDs and keeps existing IDs/preferences. Replace imports the validated database snapshot atomically. Validation/preview and confirmation happen before any destructive DB operation. Desktop replacement first retains a recovery JSON; old managed files stay intact.
+- Native portable extraction is staged and checks entry paths, duplicate IDs/names, checksums, sizes and references. It rejects traversal, symlinks, unexpected/missing attachments and unsupported formats. Files are promoted before the IndexedDB transaction, so a failed transaction can leave safe extra copies rather than dangling committed references.
+- JSON import limit: 25 MB. Portable archive limit: 2 GB compressed/expanded, 10,000 managed files plus metadata/manifest. Per-file media limits still apply.
+
+Data is tied to the device, browser profile and origin. Browser storage may be cleared/evicted; request persistent storage where supported and keep independent backups. No automatic PC/iPhone/browser/desktop sync exists. Transfer backup files manually. Backups are unencrypted and can contain personal notes/contact details/audio; keep them privately. See [backup and recovery](docs/BACKUP-AND-RECOVERY.md) for failure behavior and manual corrupt-catalog recovery.
+
+## Development and verification
+
+Use Node 22.12+ / 24 and npm. Rust stable is needed only for native development; Windows GUI development/packaging additionally requires the supported Windows MSVC toolchain. CI prepares those prerequisites so end users do not need them.
 
 ```sh
 npm ci
-npm run dev
-```
-
-Open the address printed by Vite. Use `npm ci` to preserve the lockfile. Dependencies are only needed for development/build; the deployed app makes no package-registry requests.
-
-```sh
-npm test                 # Vitest, RTL, and fake IndexedDB tests
-npm run build            # Strict type check + production/PWA build
-npm run preview          # Serve dist locally
+npm run dev                  # Original web app
+npm test                     # Vitest, RTL, fake IndexedDB migrations/services
+npm run build                # Web/PWA production build
+npm run preview
 npx playwright install --with-deps chromium
-npm run test:e2e          # Production-browser tests, including offline
+npm run test:e2e              # Production app under a /h112/ subpath fixture
+npm run build:desktop        # Separate native frontend; no PWA registration
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --locked --manifest-path src-tauri/Cargo.toml -- --test-threads=1
 ```
 
-On a machine with Chromium already installed, skip downloading it:
+Native integration tests require real FFmpeg/FFprobe. Linux development defaults to `/usr/bin/ffmpeg` and `/usr/bin/ffprobe`; on Windows set `XASMA_TEST_FFMPEG` and `XASMA_TEST_FFPROBE` to the bundled build. Tests fail rather than silently skip if tools are absent. They use a generated synthetic MP3 and application icon, never user media. The Windows workflow tests the exact binaries it packages.
+
+If Chromium is already available:
 
 ```sh
 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
 ```
 
-Browser tests build and serve the app under `/h112/` as a deliberate repository-subpath test fixture. Deployment derives the real repository name separately. Browser tests cover CRUD, search/filtering, workflow, scheduling/rescheduling, manual metadata persistence, backup download/restore, corrupted import, mobile viewport, offline reload, and manifest assets. Unit tests cover validation, duplicate IDs, merge preservation, quota errors, metadata rules, and calendar escaping. Real iPhone installation is a manual check.
+On Windows development, first build media tools in MSYS2 using `bash scripts/build-media-tools.sh`, then `npm run desktop:dev` or `npm run desktop:build`. The dedicated workflow is the supported no-local-toolchain delivery path. Production native compilation requires verified media-tool hashes; binaries, build output, source archives and local user data are excluded from Git.
 
-## GitHub Pages deployment
+Architecture: `src/features` (UI), `src/db` (Dexie v2), `src/lib` (rules/backups/providers), `src/platform` (web/native boundary), `src-tauri/src` (restricted native services). See [architecture/security](docs/DESKTOP-ARCHITECTURE.md), [FFmpeg licensing](docs/FFMPEG-LICENSING.md), and [verification boundaries](docs/WINDOWS-VERIFICATION.md).
 
-The site uses free static hosting. GitHub Pages availability depends on your GitHub plan and repository visibility; use a public repository for a no-cost Pages deployment. Actions usage must remain within GitHub's free limits. No secrets or backend deployment are required.
+## Web/PWA and GitHub Pages
 
-1. Push this project to your repository's `main` branch.
-2. In **Settings → Pages → Build and deployment**, choose **GitHub Actions** as the source.
-3. Ensure Actions are enabled for the repository. The included `.github/workflows/deploy.yml` runs tests, browser checks, and a production build on pushes to `main`. The deployment job runs only when you explicitly start the workflow manually; pushing source does not publish Pages. Deployment uses the repository's built-in token.
-4. After configuring Pages, explicitly publish via **Actions → Test and manually deploy to GitHub Pages → Run workflow** on `main`. A push to `main` runs validation only.
-5. Open the deployment URL reported by the Pages job. HTTPS is required for service workers. Wait for the app to finish caching before testing offline.
-
-The workflow sets `VITE_BASE_PATH` to `/<repository-name>/`, or `/` for a `*.github.io` repository. It does not assume an owner name. For a custom domain or path, set a repository Actions variable named `VITE_BASE_PATH`, including leading and trailing slashes (usually `/` for a custom domain). Adjust the workflow branch trigger if your default branch differs.
-
-For a manual build under any path:
+The web target remains independently buildable and usable without native media tools. It supports the catalog, metadata, planning, release/history records and metadata JSON backups; native import/conversion/ZIP controls explain the desktop requirement and are disabled on web. No FFmpeg/WASM converter is downloaded.
 
 ```sh
 VITE_BASE_PATH=/your-repository/ npm run build
 ```
 
-Deploy the contents of `dist`, not the source tree. Hash routes such as `/#/beats` avoid GitHub Pages deep-link 404s. Manifest, icons, service worker, and assets use the configured base. Changing the site origin or base path can separate browser storage or PWA scope: export a backup before moving deployments.
+Deploy `dist`, not source. Hash routes avoid Pages deep-link 404s. The existing Pages workflow derives the base from the repository name (or optional Actions `VITE_BASE_PATH`) and validates pushes to `main`; actual Pages deployment still requires explicit manual dispatch after configuring **Settings → Pages → GitHub Actions**. Desktop feature work does not dispatch it, merge to main, publish Releases, change visibility or enable billing. GitHub Free Pages requires a public repository. Desktop CI uses only standard public hosted runners, with 14-day artifacts and normal free-platform limits.
 
-This repository is prepared for deployment. Publishing requires your repository settings/permissions; local builds do not publish the site.
+For iPhone PWA use Safari → Share → Add to Home Screen on the HTTPS deployment, then open online once to finish caching. Offline behavior is tested on the production build, not Vite dev. Save edits before accepting updates. iOS install/storage/clipboard behavior varies; Chromium viewport checks do not prove actual Safari/device behavior. PWA updates do not intentionally clear IndexedDB.
 
-## Install and offline use
+## Deliberate limits
 
-**Desktop / Android:** open the HTTPS deployment, allow the app to finish caching, then use the browser install option or XASMA's install button when offered. Browser install prompts depend on browser support and eligibility.
-
-**iPhone:** open the HTTPS site in Safari → Share → **Add to Home Screen** → Add. Open it from the home screen while online once before relying on offline mode. The app uses standalone display mode and safe areas. Safari does not offer Chromium's install prompt; standalone/browser contexts and OS versions can differ in storage behavior. Real-device installation and eviction behavior must be checked on your iPhone.
-
-After the first successful service-worker installation, the app shell and all local data workflows work offline. Installation alone is not a guarantee caching finished. A new version displays an update prompt; save edits before reloading. App updates do not intentionally erase local data. Offline caching is not enabled in the Vite dev server; test it through a production build/preview or HTTPS deployment.
-
-## Backups and device transfer
-
-Data is tied to this browser profile and origin on this device. Browser storage can be cleared, evicted, or unavailable in restricted/private browsing. Request persistent storage in Settings where supported, but keep independent backups anyway. There is no automatic sync between iPhone and PC.
-
-1. Open **Settings & Backups → Export all data**. Save the JSON file somewhere safe.
-2. Transfer the file manually to another device (for example via Files, AirDrop, or USB).
-3. Open XASMA on that device and choose the file under **Choose backup to import**.
-4. Review the validated record counts and import mode.
-5. **Merge** adds unknown IDs and keeps existing records/preferences on collisions. **Replace** removes current data and restores the validated backup exactly. Confirmation is required, and all writes happen in one transaction. Export your current data before replacing.
-
-Backup schema version is `1`. Invalid schema/records, repeated IDs inside a backup, invalid dates, and unsupported versions are rejected before data is changed. Imports are limited to 25 MB, 50,000 beats, 10,000 templates, and one preferences record. Storage failures are reported instead of silently treating a write as successful.
-
-Backups contain metadata and artwork **references**, not binary files. Audio attachments and artwork uploads are deliberately not implemented. Keep your WAVs, DAW projects, and artwork files in your own storage; XASMA never uploads or fetches those references. A future attachment feature would require a portable archive and explicit quota handling.
-
-## Templates
-
-Supported placeholders: `{beatTitle}`, `{genre}`, `{bpm}`, `{key}`, `{mood}`, `{artists}`, `{producer}`, `{year}`, `{licensing}`, `{contact}`, `{socials}`. The year is generated from the current local date. Unknown placeholders remain visible for review. Artist and licensing fields are user-provided; no associations or rights are invented. Metadata does not promise search rankings or growth. Check YouTube's current publishing requirements before posting; character counters are guidance, not an external validation service.
-
-## Known limitations
-
-- Planning only: no automatic YouTube publishing, distribution, calendar subscription, cloud sync, or account system.
-- No audio/image binary storage, playback, waveform analysis, or remote artwork loading. The dashboard waveform is decorative, not derived from your music.
-- Preferred release schedule is a reusable planning note, not an automation engine.
-- IndexedDB quotas and persistent-storage permissions vary by browser. File import/export, clipboard permissions, installation, and offline behavior vary on iOS. Copy manually if clipboard permission is unavailable.
-- Calendar exports contain all-day planning events, not timed publishing appointments.
-- Template preview uses the first saved beat or clearly labelled placeholder inputs. Starter templates remain editable and deletable; deleting all templates does not silently recreate them.
-- Browser automation verifies Chromium with an iPhone-sized viewport; it does not substitute for real Safari/iPhone testing.
-- The current dependency audit reports four low-severity advisories in the PWA build-tool chain (`deepmerge` / Workbox), with no patched release reported. Production dependencies have no reported advisories. Recheck with `npm audit` as upstream releases change.
-- No deployment or GitHub Actions execution is implied by local test results.
+- No YouTube upload, OAuth, automatic publication/scheduling, cloud sync or remote AI. Manual confirmation records a user report, not a verified upload timestamp.
+- Optional local AI is **unavailable**. A provider interface is reserved; no model/runtime is bundled/downloaded and no GPU/RAM assumption is made. Templates are the complete default. llama.cpp's Windows local server was evaluated as a possible future loopback-only adapter, subject to model licensing and hardware limits.
+- Metadata counters are guidance inherited from the web app, not current platform API validation. Review licensing/artist claims and YouTube requirements yourself. The official discovery schema was consulted; actual publishing validation is deferred with publishing itself.
+- No resume of a terminated encode, no destructive managed-file purge, no WebP import, no automatic corrupt-catalog repair, and no generated MP4 bytes in backups.
+- Windows package creation, actual installer execution, GUI/file pickers/drag-drop/playback and uninstall/data-retention checks are distinct outcomes. Consult the current verification record; never infer them from a successful browser test or cross-check.
+- Current npm audit reports four low-severity PWA build-chain advisories with no patched release reported; runtime dependencies have no reported advisories. Recheck as upstream releases change.

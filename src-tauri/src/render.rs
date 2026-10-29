@@ -177,6 +177,7 @@ impl Service {
         let mut child = c
             .spawn()
             .map_err(|e| format!("FFmpeg could not start: {e}"))?;
+        let _lifetime = crate::process_guard::track(&mut child)?;
         let stdout = child.stdout.take().ok_or("Missing render stdout")?;
         let stderr = child.stderr.take().ok_or("Missing render stderr")?;
         let (send, receive) = mpsc::channel::<f64>();
@@ -325,7 +326,11 @@ impl Service {
             let mut c = self.catalog.lock().map_err(|_| "Catalog lock failed")?;
             let mut next = c.clone();
             next.exports.push(record.clone());
-            self.save(&next)?;
+            self.save(&next).map_err(|e| {
+                format!(
+                    "Destination files were written, but export history could not be recorded: {e}"
+                )
+            })?;
             *c = next;
             Ok(record)
         })();

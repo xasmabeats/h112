@@ -5,9 +5,9 @@ No end-user FFmpeg installation, PATH fallback, executable picker, or third-part
 
 Pinned upstream source:
 
-| Component | Revision | Source archive SHA-256 |
-| --- | --- | --- |
-| FFmpeg n7.1.5 | 3a0867c2bfda4a4d4309ca1a8cbdc6175e67f587 | 83220fe0807da10df19714176f02ec3d3812ef0e055f69e940d01b3ad1379cdb |
+| Component            | Revision                                 | Source archive SHA-256                                           |
+| -------------------- | ---------------------------------------- | ---------------------------------------------------------------- |
+| FFmpeg n7.1.5        | 3a0867c2bfda4a4d4309ca1a8cbdc6175e67f587 | 83220fe0807da10df19714176f02ec3d3812ef0e055f69e940d01b3ad1379cdb |
 | x264 stable snapshot | 31e19f92f00c7003fa115047ce50978bc98c3a0d | d053c9d86988d6bc78237ca5205865c5ddf99c98ef4cd9927eec8f6d388f6dd9 |
 
 Archives come from GitHub codeload for the official FFmpeg repository and the x264 mirror. The exact archive bytes were downloaded and hashed during implementation. Every Windows build checks those hashes before extraction. MSYS2 supplies the build toolchain; its signed package verification remains enabled. Build outputs have their own generated SHA-256 file; the output is not claimed bit-reproducible across toolchain versions. The CI log and `BUILD-CONFIGURATION.txt` record the toolchain/configuration.

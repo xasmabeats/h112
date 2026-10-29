@@ -2175,3 +2175,19 @@ progress {
     padding: 17px;
   }
 }
+.release-statuses {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.release-media-grid .panel {
+  min-width: 0;
+}
+.release-media-grid strong,
+.error {
+  overflow-wrap: anywhere;
+}
+.release-heading {
+  flex-wrap: wrap;
+}

@@ -25,6 +25,8 @@ import {
   isActive,
   releaseCondition,
   outdated,
+  nativeMediaPath,
+  nativeOutputPath,
 } from '../../lib/releases';
 import { isDesktop, platform } from '../../platform';
 import { useNative } from '../../platform/NativeProvider';
@@ -100,7 +102,7 @@ export default function Studio() {
   const desktop = isDesktop();
   function mediaCard(kind: 'audio' | 'artwork') {
     const record = media.find((m) => m.id === (kind === 'audio' ? beat?.audioId : beat?.artworkId));
-    const path = record && snapshot?.mediaUrls[record.id];
+    const path = nativeMediaPath(record, snapshot);
     return (
       <section className="panel form-panel">
         <h2>
@@ -273,7 +275,10 @@ export default function Studio() {
                   <h2>
                     <Clapperboard size={18} /> Release preparation
                   </h2>
-                  <span className="badge">{releaseCondition(release, jobs, exports)}</span>
+                  <div className="release-statuses">
+                    <span className="badge">Preparation: {release.ready ? 'Ready' : 'Draft'}</span>
+                    <span className="badge">{releaseCondition(release, jobs, exports)}</span>
+                  </div>
                 </div>
                 <Field label="Release draft">
                   <select value={release.id} onChange={(e) => setReleaseId(e.target.value)}>
@@ -343,8 +348,14 @@ export default function Studio() {
                       !release.ready ||
                       differs ||
                       !!snapshot.activeJobId ||
-                      !snapshot.mediaUrls[release.audioId] ||
-                      !snapshot.mediaUrls[release.artworkId]
+                      !nativeMediaPath(
+                        media.find((m) => m.id === release.audioId),
+                        snapshot,
+                      ) ||
+                      !nativeMediaPath(
+                        media.find((m) => m.id === release.artworkId),
+                        snapshot,
+                      )
                     }
                     onClick={() =>
                       void action(async () => {
@@ -373,7 +384,7 @@ export default function Studio() {
                 <h2>Render attempts & outputs</h2>
                 {attempts.length ? (
                   attempts.map((job) => {
-                    const available = snapshot?.outputUrls[job.id];
+                    const available = nativeOutputPath(job, snapshot);
                     return (
                       <article className="panel form-panel" key={job.id}>
                         <div className="release-heading">

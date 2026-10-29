@@ -148,6 +148,12 @@ export async function saveBeat(beat: Beat) {
     const previous = await db.beats.get(beat.id);
     const at = new Date().toISOString();
     const saved = { ...beat, title: beat.title.trim(), updatedAt: at };
+    if (previous) {
+      const { updatedAt: _old, ...oldFields } = previous;
+      const { updatedAt: _new, ...newFields } = saved;
+      if (JSON.stringify(oldFields) === JSON.stringify(newFields)) return;
+    }
+
     await db.beats.put(saved);
     const type = !previous
       ? 'beat_created'

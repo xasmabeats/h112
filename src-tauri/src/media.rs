@@ -41,6 +41,7 @@ pub fn run_bounded(mut c: Command, timeout: Duration) -> Result<Vec<u8>> {
     let mut child = c
         .spawn()
         .map_err(|e| format!("Media tool could not start: {e}"))?;
+    let _lifetime = crate::process_guard::track(&mut child)?;
     let stdout = child.stdout.take().ok_or("Missing stdout")?;
     let stderr = child.stderr.take().ok_or("Missing stderr")?;
     let out = std::thread::spawn(move || {

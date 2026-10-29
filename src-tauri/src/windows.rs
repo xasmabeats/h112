@@ -151,7 +151,9 @@ async fn save_video(
             let mut c = service.catalog.lock().map_err(|_| "Catalog lock failed")?;
             let mut next = c.clone();
             next.exports.push(record.clone());
-            service.save(&next)?;
+            service.save(&next).map_err(|e| {
+                format!("Video was written, but export history could not be recorded: {e}")
+            })?;
             *c = next;
             Ok(Some(record))
         })();
@@ -170,7 +172,8 @@ fn open_output_folder(service: State<'_, Arc<Service>>, job_id: String) -> Resul
         .ok_or("Windows directory unavailable")?
         .join("explorer.exe");
     std::process::Command::new(explorer)
-        .arg(format!("/select,{}", path.display()))
+        .arg("/select,")
+        .arg(path)
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())

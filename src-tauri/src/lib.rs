@@ -1,6 +1,7 @@
 pub mod archive;
 pub mod media;
 pub mod model;
+mod process_guard;
 pub mod render;
 use model::*;
 use sha2::{Digest, Sha256};
@@ -106,6 +107,13 @@ impl Service {
         }))
     }
     pub fn save(&self, catalog: &Catalog) -> Result<()> {
+        if serde_json::to_vec(catalog)
+            .map_err(|e| e.to_string())?
+            .len() as u64
+            > MAX_DB
+        {
+            return Err("Native catalog reached its 25 MB safety limit. Preserve a backup before further changes.".into());
+        }
         atomic_json(&self.root.join("catalog.json"), catalog)
     }
     pub fn media_path(&self, id: &str) -> Result<PathBuf> {

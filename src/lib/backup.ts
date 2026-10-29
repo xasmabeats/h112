@@ -128,6 +128,62 @@ export interface Backup extends Omit<LegacyBackup, 'schemaVersion' | 'attachment
   events: HistoryEvent[];
 }
 const extraTables = ['media', 'releases', 'jobs', 'exports', 'events'] as const;
+const hasOnlyKeys = (value: unknown, keys: readonly string[]) =>
+  object(value) && Object.keys(value).every((key) => keys.includes(key));
+const metadataKeys = [
+  'title',
+  'description',
+  'tags',
+  'hashtags',
+  'filename',
+  'pinnedComment',
+] as const;
+const beatKeys = [
+  'id',
+  'title',
+  'genre',
+  'bpm',
+  'key',
+  'mood',
+  'artists',
+  'tags',
+  'productionNotes',
+  'customNotes',
+  'createdAt',
+  'updatedAt',
+  'status',
+  'plannedDate',
+  'actualDate',
+  'youtubeUrl',
+  'artwork',
+  'metadata',
+  'audioId',
+  'artworkId',
+  'deletedAt',
+] as const;
+const mediaKeys = [
+  'id',
+  'kind',
+  'originalName',
+  'format',
+  'mime',
+  'bytes',
+  'duration',
+  'width',
+  'height',
+  'sha256',
+  'version',
+  'createdAt',
+  'managed',
+] as const;
+const baseKeys = [
+  'schemaVersion',
+  'exportedAt',
+  'attachments',
+  'beats',
+  'templates',
+  'settings',
+] as const;
 const metadataValid = (v: unknown) =>
   object(v) &&
   strings(v, ['title', 'description', 'tags', 'hashtags', 'filename', 'pinnedComment']);
@@ -135,8 +191,30 @@ const instant = (v: unknown) => typeof v === 'string' && v.length <= 40 && !isNa
 const reference = (id: unknown, ids: Set<string>) => typeof id === 'string' && ids.has(id);
 export function validateBackup(raw: unknown): Backup {
   if (!object(raw)) throw new Error('Invalid backup object.');
+  if (new TextEncoder().encode(JSON.stringify(raw)).length > 25 * 1024 * 1024)
+    throw new Error('Backup metadata exceeds 25 MB.');
+  if (!hasOnlyKeys(raw, raw.schemaVersion === 1 ? baseKeys : [...baseKeys, ...extraTables]))
+    throw new Error('Unsupported records or fields in backup; no data was imported.');
   if (raw.schemaVersion === 1) {
     const legacy = validateLegacyBackup(raw);
+    if (
+      legacy.beats.some((beat) => !hasOnlyKeys(beat, beatKeys) || beat.audioId || beat.artworkId) ||
+      legacy.settings.some(
+        (row) =>
+          !hasOnlyKeys(row, [
+            'id',
+            'producer',
+            'defaultGenre',
+            'defaultTemplate',
+            'schedule',
+            'contact',
+            'socials',
+            'licensing',
+            'appearance',
+          ]),
+      )
+    )
+      throw new Error('Unsupported v1 fields; import a genuine v1 export.');
     return {
       ...legacy,
       schemaVersion: 2,
@@ -169,17 +247,36 @@ export function validateBackup(raw: unknown): Backup {
       ids.add(item.id);
     }
   }
+  for (const beat of base.beats)
+    if (!hasOnlyKeys(beat, beatKeys)) throw new Error('Unsupported beat fields.');
+  for (const row of base.settings)
+    if (
+      !hasOnlyKeys(row, [
+        'id',
+        'producer',
+        'defaultGenre',
+        'defaultTemplate',
+        'schedule',
+        'contact',
+        'socials',
+        'licensing',
+        'appearance',
+      ])
+    )
+      throw new Error('Unsupported preferences; credentials are never imported.');
   const beatIds = new Set(base.beats.map((b) => b.id)),
     mediaIds = new Set(backup.media.map((m) => m.id)),
     releaseIds = new Set(backup.releases.map((r) => r.id)),
     jobIds = new Set(backup.jobs.map((j) => j.id));
   for (const m of backup.media) {
     if (
+      !hasOnlyKeys(m, mediaKeys) ||
       !['audio', 'artwork'].includes(m.kind) ||
       !['mp3', 'wav', 'png', 'jpg'].includes(m.format) ||
       m.managed !== true ||
       m.version !== 1 ||
       typeof m.originalName !== 'string' ||
+      m.originalName.length > 1024 ||
       typeof m.mime !== 'string' ||
       !Number.isSafeInteger(m.bytes) ||
       m.bytes <= 0 ||
@@ -214,6 +311,18 @@ export function validateBackup(raw: unknown): Backup {
   }
   for (const release of backup.releases) {
     if (
+      !hasOnlyKeys(release, [
+        'id',
+        'beatId',
+        'name',
+        'audioId',
+        'artworkId',
+        'metadata',
+        'ready',
+        'createdAt',
+        'updatedAt',
+        'manualPublication',
+      ]) ||
       !reference(release.beatId, beatIds) ||
       typeof release.name !== 'string' ||
       !metadataValid(release.metadata) ||
@@ -230,9 +339,25 @@ export function validateBackup(raw: unknown): Backup {
     )
       throw new Error('Invalid release or missing release references.');
   }
+  const mediaById = new Map(backup.media.map((m) => [m.id, m]));
   for (const job of backup.jobs) {
     if (
+      !hasOnlyKeys(job, [
+        'id',
+        'attempt',
+        'request',
+        'audio',
+        'artwork',
+        'state',
+        'progress',
+        'createdAt',
+        'updatedAt',
+        'error',
+        'outputBytes',
+        'outputSha256',
+      ]) ||
       !object(job.request) ||
+      !hasOnlyKeys(job.request, ['beatId', 'releaseId', 'audioId', 'artworkId', 'metadata']) ||
       !reference(job.request.beatId, beatIds) ||
       !reference(job.request.releaseId, releaseIds) ||
       !reference(job.request.audioId, mediaIds) ||
@@ -242,6 +367,8 @@ export function validateBackup(raw: unknown): Backup {
       !object(job.artwork) ||
       job.audio.id !== job.request.audioId ||
       job.artwork.id !== job.request.artworkId ||
+      !mediaKeys.every((key) => job.audio[key] === mediaById.get(job.request.audioId)?.[key]) ||
+      !mediaKeys.every((key) => job.artwork[key] === mediaById.get(job.request.artworkId)?.[key]) ||
       !jobStates.includes(job.state) ||
       !Number.isInteger(job.attempt) ||
       job.attempt < 1 ||
@@ -259,6 +386,16 @@ export function validateBackup(raw: unknown): Backup {
   }
   for (const record of backup.exports) {
     if (
+      !hasOnlyKeys(record, [
+        'id',
+        'jobId',
+        'releaseId',
+        'beatId',
+        'createdAt',
+        'kind',
+        'destinationName',
+        'bytes',
+      ]) ||
       !reference(record.jobId, jobIds) ||
       !reference(record.releaseId, releaseIds) ||
       !reference(record.beatId, beatIds) ||
@@ -272,6 +409,7 @@ export function validateBackup(raw: unknown): Backup {
   }
   for (const e of backup.events) {
     if (
+      !hasOnlyKeys(e, ['id', 'beatId', 'releaseId', 'jobId', 'type', 'status', 'at', 'detail']) ||
       !reference(e.beatId, beatIds) ||
       (e.releaseId && !releaseIds.has(e.releaseId)) ||
       (e.jobId && !jobIds.has(e.jobId)) ||

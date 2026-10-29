@@ -20,3 +20,11 @@ Starting commit: d62c0f1eeb1b2030f3cc132c24851200d82539c7.
 - Rust core is independently testable on Linux; Tauri runtime is a Windows target dependency.
 - Official Tauri docs inspected from tauri-apps/tauri-docs (capabilities, app command permissions, Windows installer, resources); public docs site was denied by network policy.
 - Git read/push works. Public GitHub HTML confirms repository_public=true, so standard hosted Windows runners are free. Workflow is gated to public repositories and cannot deploy the website or publish Releases. GitHub API currently returns Forbidden; PR/artifact API access remains blocked. Do not report an installer or PR until independently confirmed.
+
+## First Windows run result
+
+- Run 40955329319 / commit 6b59d4b: npm/unit/browser/build checks passed on Windows; source-built verified media tools and native cargo check passed.
+- Native conversion/cancellation/archive/recovery test step failed; no NSIS installer was created. Public annotations only expose exit code, and authenticated log API is blocked at CONNECT.
+- Next run adds bounded native-test diagnostics to the public job summary (preserving exit status) so the actual failure can be isolated. This is a diagnostic state change, not a blind rerun.
+- Kernel Job Objects now constrain Windows child-process lifetime, backup schemas reject unknown records, provenance collisions are checked, and web v1→v2/offline release E2E was added.
+- Cloud draft now adds api.github.com only; running network remains unchanged until user applies settings. Do not ask for a token in chat.

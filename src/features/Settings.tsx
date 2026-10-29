@@ -12,6 +12,7 @@ export default function Settings() {
   const [form, setForm] = useState(settings),
     [error, setError] = useState(''),
     [preview, setPreview] = useState<Backup | null>(null),
+    [sourceVersion, setSourceVersion] = useState<number | null>(null),
     [mode, setMode] = useState<'merge' | 'replace'>('merge'),
     [busy, setBusy] = useState(false),
     [storage, setStorage] = useState<StorageEstimate | null>(null),
@@ -48,7 +49,9 @@ export default function Settings() {
       return;
     }
     try {
-      setPreview(validateBackup(JSON.parse(await file.text())));
+      const raw = JSON.parse(await file.text());
+      setPreview(validateBackup(raw));
+      setSourceVersion(raw.schemaVersion);
     } catch (e) {
       setError(errorText(e));
     }
@@ -236,7 +239,7 @@ export default function Settings() {
                   {preview.settings.length} preference records
                 </p>
                 <p className="muted">
-                  Schema {preview.schemaVersion} · Exported{' '}
+                  Input schema {sourceVersion} · App schema {preview.schemaVersion} · Exported{' '}
                   {new Date(preview.exportedAt).toLocaleString()}
                 </p>
                 <Field label="Import mode">

@@ -8,6 +8,56 @@ import type {
   ReleaseDraft,
   RenderJob,
 } from '../types/desktop';
+const mediaFields: (keyof ManagedMedia)[] = [
+  'id',
+  'kind',
+  'originalName',
+  'format',
+  'mime',
+  'bytes',
+  'duration',
+  'width',
+  'height',
+  'sha256',
+  'version',
+  'createdAt',
+  'managed',
+];
+function sameMedia(a: ManagedMedia | undefined, b: ManagedMedia | undefined) {
+  return !!a && !!b && mediaFields.every((key) => a[key] === b[key]);
+}
+function sameRequest(a: RenderJob['request'], b: RenderJob['request']) {
+  return (
+    a.beatId === b.beatId &&
+    a.releaseId === b.releaseId &&
+    a.audioId === b.audioId &&
+    a.artworkId === b.artworkId &&
+    (Object.keys(a.metadata) as (keyof Metadata)[]).every(
+      (key) => a.metadata[key] === b.metadata[key],
+    )
+  );
+}
+export function nativeMediaPath(media: ManagedMedia | undefined, snapshot: NativeSnapshot | null) {
+  if (!media || !snapshot) return undefined;
+  return sameMedia(
+    media,
+    snapshot.catalog.media.find((m) => m.id === media.id),
+  )
+    ? snapshot.mediaUrls[media.id]
+    : undefined;
+}
+export function nativeOutputPath(job: RenderJob, snapshot: NativeSnapshot | null) {
+  const local = snapshot?.catalog.jobs.find((j) => j.id === job.id);
+  if (
+    !local ||
+    !sameRequest(job.request, local.request) ||
+    !sameMedia(job.audio, local.audio) ||
+    !sameMedia(job.artwork, local.artwork) ||
+    job.outputSha256 !== local.outputSha256
+  )
+    return undefined;
+  return snapshot?.outputUrls[job.id];
+}
 export function isActive(job: RenderJob) {
   return ['Probing', 'Preparing', 'Encoding', 'Validating'].includes(job.state);
 }
@@ -155,6 +205,7 @@ export async function syncNative(snapshot: NativeSnapshot) {
     'rw',
     [db.media, db.jobs, db.exports, db.events, db.releases, db.beats],
     async () => {
+      const nativeJobs = new Map(snapshot.catalog.jobs.map((job) => [job.id, job]));
       for (const job of snapshot.catalog.jobs) {
         if (
           !(await db.releases.get(job.request.releaseId)) ||
@@ -169,6 +220,12 @@ export async function syncNative(snapshot: NativeSnapshot) {
             status: 'Probing',
             at: job.createdAt,
           });
+        if (
+          !sameMedia(await db.media.get(job.audio.id), job.audio) ||
+          !sameMedia(await db.media.get(job.artwork.id), job.artwork) ||
+          (await db.releases.get(job.request.releaseId))?.beatId !== job.request.beatId
+        )
+          continue;
         const previous = await db.jobs.get(job.id);
         if (previous?.updatedAt === job.updatedAt) continue;
         await db.jobs.put(job);
@@ -187,7 +244,15 @@ export async function syncNative(snapshot: NativeSnapshot) {
           );
       }
       for (const record of snapshot.catalog.exports) {
-        if (!(await db.jobs.get(record.jobId)) || (await db.exports.get(record.id))) continue;
+        const storedJob = await db.jobs.get(record.jobId),
+          localJob = nativeJobs.get(record.jobId);
+        if (
+          !storedJob ||
+          !localJob ||
+          !sameRequest(storedJob.request, localJob.request) ||
+          (await db.exports.get(record.id))
+        )
+          continue;
         await db.exports.put(record);
         await event(
           'export_completed',
